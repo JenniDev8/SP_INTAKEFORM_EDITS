@@ -393,7 +393,8 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
     ["Storage Start Date", safe(data.storageStartDate), "", ""],
   ]);
 
-  // ── Identification (flows naturally — no forced page break) ──
+  // ── Identification (starts on page 2 so the IDs aren't split across pages) ──
+  body.appendPageBreak();
   sectionHeader(body, "Identification");
 
   var idTable = body.appendTable([["", ""]]);
