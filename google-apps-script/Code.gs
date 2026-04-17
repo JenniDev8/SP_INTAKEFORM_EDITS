@@ -317,8 +317,6 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   metaText.appendText(safe(data.location));
   metaText.appendText("     Submitted: ");
   metaText.appendText(formatNiceDate(data.timestamp));
-  metaText.appendText("     Customer: ");
-  metaText.appendText(trim((data.firstName || "") + " " + (data.lastName || "")) || "—");
   styleText(metaPara, { size: 9, color: MUTED_COLOR });
   try { metaPara.setSpacingBefore(4).setSpacingAfter(8); } catch (e) {}
 
