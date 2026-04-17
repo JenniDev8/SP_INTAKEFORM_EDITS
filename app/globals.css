@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --navy: #152C73;
+  --blue: #152C73;
+  --red: #D32F2F;
+  --light: #F2F3F5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background-color: var(--light);
+  color: #1a1a2e;
+}
+
+/* Section card style */
+.form-section {
+  @apply bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-5;
+}
+
+.section-title {
+  @apply text-sm font-semibold uppercase tracking-widest text-brand-navy mb-5 pb-2 border-b border-gray-200;
+}
+
+/* Input base */
+.input-base {
+  @apply w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-800
+         focus:outline-none focus:ring-2 focus:ring-brand-navy/25 focus:border-brand-navy
+         placeholder:text-gray-400 transition;
+}
+
+.label-base {
+  @apply block text-xs font-medium text-gray-600 mb-1;
+}
+
+/* Signature pad */
+.signature-pad {
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+}
+
+/* Radio / checkbox pill */
+.pill-option {
+  @apply flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-300 bg-white cursor-pointer
+         text-sm text-gray-700 transition hover:border-brand-navy hover:bg-brand-navy/5;
+}
+
+.pill-option input:checked ~ span {
+  @apply font-semibold text-brand-navy;
+}
+
+.pill-option:has(input:checked) {
+  @apply border-brand-navy bg-brand-navy/5;
+}
+
+/* Button */
+.btn-primary {
+  @apply bg-brand-navy text-white font-semibold px-8 py-3 rounded-xl text-sm tracking-wide
+         hover:bg-brand-blue transition active:scale-95 shadow;
+}
+
+.btn-secondary {
+  @apply bg-white text-brand-navy font-semibold px-6 py-3 rounded-xl text-sm tracking-wide
+         border border-brand-navy hover:bg-gray-50 transition active:scale-95;
+}
+
+.btn-danger {
+  @apply bg-brand-red text-white font-semibold px-5 py-2.5 rounded-lg text-sm tracking-wide
+         hover:bg-brand-redDark transition active:scale-95 shadow;
+}
+
+/* Progress bar */
+.progress-step {
+  @apply flex items-center gap-2 text-xs font-medium;
+}
+
+/* Dark navy header/banner (used for form header + success screen) */
+.welcome-bg {
+  background: linear-gradient(135deg, #152C73 0%, #0D1E55 100%);
+}
