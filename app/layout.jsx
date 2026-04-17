@@ -5,6 +5,13 @@ export const metadata = {
   description: "Storage Plus Intake Form",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#152C73",
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">

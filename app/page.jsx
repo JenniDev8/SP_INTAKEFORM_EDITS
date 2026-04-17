@@ -5,22 +5,22 @@ export default function WelcomePage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-brand-light flex flex-col items-center justify-center px-6 py-12">
+    <div className="min-h-screen bg-brand-light flex flex-col items-center justify-center px-4 sm:px-6 py-8 sm:py-12">
       {/* Welcome Card */}
-      <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-10 max-w-md w-full text-center">
+      <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-6 sm:p-10 max-w-md w-full text-center">
         {/* Logo */}
-        <div className="mb-8 flex items-center justify-center">
+        <div className="mb-6 sm:mb-8 flex items-center justify-center">
           <img
             src="/storage-plus-logo.png"
             alt="Storage Plus"
-            className="h-12 w-auto"
+            className="h-11 sm:h-12 w-auto"
           />
         </div>
 
-        <h1 className="font-display text-3xl font-bold text-brand-navy mb-3 leading-tight">
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-brand-navy mb-3 leading-tight">
           Welcome to Storage Plus
         </h1>
-        <p className="text-gray-600 text-sm leading-relaxed mb-8">
+        <p className="text-gray-600 text-sm leading-relaxed mb-6 sm:mb-8">
           Please complete the intake form to get started with your storage unit.
         </p>
 

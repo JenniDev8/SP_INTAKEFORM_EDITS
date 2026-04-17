@@ -124,7 +124,7 @@ function SectionTitle({ children }) {
 
 function Field({ label, required, children, half }) {
   return (
-    <div className={half ? "flex-1 min-w-[140px]" : "w-full"}>
+    <div className={half ? "w-full sm:flex-1 sm:min-w-[140px]" : "w-full"}>
       {label && (
         <label className="label-base">
           {label} {required && <span className="text-red-400">*</span>}
@@ -322,26 +322,26 @@ export default function IntakeForm() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-brand-light flex flex-col items-center justify-center px-6 py-12">
-        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-10 max-w-md w-full text-center">
-          <div className="mb-6 flex items-center justify-center">
+      <div className="min-h-screen bg-brand-light flex flex-col items-center justify-center px-4 sm:px-6 py-8 sm:py-12">
+        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-6 sm:p-10 max-w-md w-full text-center">
+          <div className="mb-5 sm:mb-6 flex items-center justify-center">
             <img
               src="/storage-plus-logo.png"
               alt="Storage Plus"
-              className="h-10 w-auto"
+              className="h-9 sm:h-10 w-auto"
             />
           </div>
 
-          <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mb-5 mx-auto shadow">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 bg-green-500 rounded-full flex items-center justify-center mb-4 sm:mb-5 mx-auto shadow">
+            <svg className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
             </svg>
           </div>
 
-          <h1 className="font-display text-3xl font-bold text-brand-navy mb-3">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-brand-navy mb-3">
             Intake Submitted!
           </h1>
-          <p className="text-gray-600 text-sm leading-relaxed mb-8">
+          <p className="text-gray-600 text-sm leading-relaxed mb-6 sm:mb-8">
             The intake form for{" "}
             <strong className="text-brand-navy">{form.customer.firstName} {form.customer.lastName}</strong>{" "}
             has been received and saved. Returning to the welcome screen…
@@ -365,18 +365,20 @@ export default function IntakeForm() {
     <div className="min-h-screen bg-brand-light">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
           <img
             src="/storage-plus-logo.png"
             alt="Storage Plus"
-            className="h-8 w-auto"
+            className="h-7 sm:h-8 w-auto"
           />
-          <span className="text-brand-navy text-xs font-semibold uppercase tracking-widest">Intake Form</span>
+          <span className="text-brand-navy text-[10px] sm:text-xs font-semibold uppercase tracking-widest">
+            Intake Form
+          </span>
         </div>
       </header>
 
       {/* Form body */}
-      <form onSubmit={handleSubmit} className="max-w-3xl mx-auto px-4 py-8 space-y-0">
+      <form onSubmit={handleSubmit} className="max-w-3xl mx-auto px-3 sm:px-4 py-5 sm:py-8 space-y-0">
 
         {/* ── LOCATION ── */}
         <div className="form-section">
@@ -783,7 +785,7 @@ export default function IntakeForm() {
           </p>
           <div className="space-y-5">
             <Field label="How will you pay today?" required>
-              <div className="flex gap-3 flex-wrap">
+              <div className="flex flex-wrap gap-2 sm:gap-3">
                 {["Credit Card", "Cash"].map((method) => (
                   <label key={method} className="pill-option">
                     <input
@@ -802,7 +804,7 @@ export default function IntakeForm() {
             </Field>
 
             <Field label="Sign up for Autopayment?">
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2 sm:gap-3">
                 {["Yes", "No"].map((opt) => (
                   <label key={opt} className="pill-option">
                     <input
@@ -892,14 +894,14 @@ export default function IntakeForm() {
         )}
 
         {/* ── SUBMIT ── */}
-        <div className="form-section flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-gray-400 leading-relaxed max-w-sm">
+        <div className="form-section flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <p className="text-xs text-gray-500 leading-relaxed sm:max-w-sm">
             By submitting, you confirm that the information provided on this intake form is accurate.
           </p>
           <button
             type="submit"
             disabled={submitting}
-            className="btn-primary min-w-[200px] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="btn-primary w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting ? (
               <>

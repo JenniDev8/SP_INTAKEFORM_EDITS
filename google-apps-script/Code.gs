@@ -108,6 +108,7 @@ function doPost(e) {
       );
     } catch (pdfErr) {
       Logger.log("PDF generation error: " + pdfErr.toString());
+      Logger.log("Stack: " + (pdfErr.stack || "(no stack)"));
     }
 
     // Parse phones and emails into readable strings
@@ -271,32 +272,55 @@ var BRAND_LIGHT = "#EEF1F8";
 var TEXT_COLOR = "#1F2937";
 var MUTED_COLOR = "#6B7280";
 var LINE_COLOR = "#D0D4DC";
+var LOGO_URL = "https://nystorage.com/wp-content/uploads/2023/05/Storage-Plus-New-Color-logo.png";
+
+function getLogoBlob() {
+  try {
+    var resp = UrlFetchApp.fetch(LOGO_URL, { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) return null;
+    return resp.getBlob();
+  } catch (e) {
+    Logger.log("Failed to fetch logo: " + e.toString());
+    return null;
+  }
+}
 
 function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, signatureBlob) {
   var tempName = "Intake_" + nameSuffix + "_TEMP_" + new Date().getTime();
   var doc = DocumentApp.create(tempName);
   var body = doc.getBody();
-  body.clear();
-  body.setMarginTop(32).setMarginBottom(32).setMarginLeft(40).setMarginRight(40);
+  body.setMarginTop(28).setMarginBottom(28).setMarginLeft(40).setMarginRight(40);
 
-  // ── Header block ──
-  var title = body.appendParagraph("STORAGE PLUS");
-  styleText(title, { size: 18, bold: true, color: BRAND_COLOR, spacing: 1 });
-  title.setSpacingAfter(0);
+  // ── Header: logo (fallback to text if fetch fails) ──
+  var logoBlob = getLogoBlob();
+  if (logoBlob) {
+    try {
+      var logoImg = body.appendImage(logoBlob);
+      var origW = logoImg.getWidth();
+      var origH = logoImg.getHeight();
+      var targetW = 170;
+      logoImg.setWidth(targetW);
+      if (origW > 0) logoImg.setHeight(Math.round(origH * (targetW / origW)));
+    } catch (e) {
+      var fallback = body.appendParagraph("STORAGE PLUS");
+      styleText(fallback, { size: 18, bold: true, color: BRAND_COLOR });
+    }
+  } else {
+    var fallback2 = body.appendParagraph("STORAGE PLUS");
+    styleText(fallback2, { size: 18, bold: true, color: BRAND_COLOR });
+  }
 
-  var sub = body.appendParagraph("Intake Form Summary");
-  styleText(sub, { size: 11, color: MUTED_COLOR });
-  sub.setSpacingAfter(6);
-
-  // divider rule under header
-  appendDivider(body, BRAND_COLOR, 1.5);
-
-  // Meta info (2-col table, no borders)
-  metaBlock(body, [
-    ["Location",  safe(data.location)],
-    ["Submitted", formatNiceDate(data.timestamp)],
-    ["Customer",  trim((data.firstName || "") + " " + (data.lastName || "")) || "—"],
-  ]);
+  // Meta line
+  var metaPara = body.appendParagraph("");
+  var metaText = metaPara.editAsText();
+  metaText.appendText("Location: ");
+  metaText.appendText(safe(data.location));
+  metaText.appendText("     Submitted: ");
+  metaText.appendText(formatNiceDate(data.timestamp));
+  metaText.appendText("     Customer: ");
+  metaText.appendText(trim((data.firstName || "") + " " + (data.lastName || "")) || "—");
+  styleText(metaPara, { size: 9, color: MUTED_COLOR });
+  try { metaPara.setSpacingBefore(4).setSpacingAfter(8); } catch (e) {}
 
   // ── Customer Information ──
   sectionHeader(body, "Customer Information");
@@ -313,13 +337,12 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
     ["State",  safe(data.state),          "ZIP",  zipLine],
   ]);
 
-  // ── Contact Info (phones + emails) ──
+  // ── Contact Info: phone & email side by side ──
   sectionHeader(body, "Contact Information");
   var phonesText = formatPhones(data.phones) || "—";
   var emailsText = formatEmails(data.emails) || "—";
   kvTable(body, [
-    ["Phone(s)", phonesText, "", ""],
-    ["Email(s)", emailsText, "", ""],
+    ["Phone(s)", phonesText, "Email(s)", emailsText],
   ]);
 
   // ── Rent Reminder ──
@@ -346,7 +369,7 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   if (accessPeople.length === 0) {
     var none = body.appendParagraph("None provided");
     styleText(none, { size: 9, color: MUTED_COLOR, italic: true });
-    none.setSpacingBefore(2).setSpacingAfter(4);
+    try { none.setSpacingBefore(2).setSpacingAfter(4); } catch (e) {}
   } else {
     var accessRows = [["Name", "Phone"]];
     accessPeople.forEach(function (p) {
@@ -370,8 +393,7 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
     ["Storage Start Date", safe(data.storageStartDate), "", ""],
   ]);
 
-  // ── Identification (page 2) ──
-  body.appendPageBreak();
+  // ── Identification (flows naturally — no forced page break) ──
   sectionHeader(body, "Identification");
 
   var idTable = body.appendTable([["", ""]]);
@@ -383,10 +405,15 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   // ── Signature ──
   sectionHeader(body, "Signature");
   if (signatureBlob) {
-    var sigImg = body.appendImage(signatureBlob);
-    sigImg.setWidth(360);
-    var ratio = sigImg.getHeight() / sigImg.getWidth();
-    if (ratio > 0.35) sigImg.setHeight(Math.round(360 * 0.28));
+    try {
+      var sigImg = body.appendImage(signatureBlob);
+      sigImg.setWidth(280);
+      var ratio = sigImg.getHeight() / sigImg.getWidth();
+      if (ratio > 0.3) sigImg.setHeight(Math.round(280 * 0.25));
+    } catch (e) {
+      var sErr = body.appendParagraph("(signature render error)");
+      styleText(sErr, { size: 9, color: MUTED_COLOR, italic: true });
+    }
   } else {
     var noSig = body.appendParagraph("(No signature captured)");
     styleText(noSig, { size: 9, color: MUTED_COLOR, italic: true });
@@ -397,7 +424,7 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
     "  ·  " + formatNiceDate(data.timestamp)
   );
   styleText(sigCaption, { size: 9, color: MUTED_COLOR });
-  sigCaption.setSpacingBefore(2);
+  try { sigCaption.setSpacingBefore(2); } catch (e) {}
 
   // footer
   var footer = body.appendParagraph(
@@ -405,7 +432,7 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
     "The rental agreement is signed separately at the facility."
   );
   styleText(footer, { size: 8, color: MUTED_COLOR, italic: true });
-  footer.setSpacingBefore(12);
+  try { footer.setSpacingBefore(8); } catch (e) {}
 
   doc.saveAndClose();
 
@@ -420,122 +447,138 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
 
 // ── DOC LAYOUT HELPERS ────────────────────────────────────────────────────────
 
-function appendDivider(body, color, weight) {
-  // Use a 1-row 1-col table w/ only a colored bottom border as a hairline.
-  var t = body.appendTable([[""]]);
-  t.setBorderWidth(0);
-  var cell = t.getCell(0, 0);
-  cell.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0);
-  // One line of content to keep the table rendered
-  cell.getChild(0).asParagraph().setText("").editAsText().setFontSize(1);
-  // A simple way: set top border of the cell only via table border + padding
-  t.setBorderColor(color);
-  t.setBorderWidth(weight || 1);
-}
-
-function metaBlock(body, rows) {
-  var table = body.appendTable(rows.map(function () { return ["", ""]; }));
-  clearTableBorders(table);
-  for (var r = 0; r < rows.length; r++) {
-    var row = table.getRow(r);
-    setCellText(row.getCell(0), rows[r][0], { size: 9, bold: true, color: MUTED_COLOR });
-    setCellText(row.getCell(1), rows[r][1], { size: 9, color: TEXT_COLOR });
-    row.getCell(0).setPaddingTop(1).setPaddingBottom(1);
-    row.getCell(1).setPaddingTop(1).setPaddingBottom(1);
-  }
-  // Narrow first column
-  try {
-    table.setColumnWidth(0, 70);
-  } catch (e) {}
-}
-
 function sectionHeader(body, label) {
   // Full-width single-cell table with a light background = colored section bar
-  var t = body.appendTable([[""]]);
-  t.setBorderWidth(0);
-  var cell = t.getCell(0, 0);
-  cell.setBackgroundColor(BRAND_LIGHT);
-  cell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(6).setPaddingRight(6);
-  var para = cell.getChild(0).asParagraph();
-  para.setText(label.toUpperCase());
-  styleText(para, { size: 9, bold: true, color: BRAND_COLOR });
-  // a small gap after the bar
-  var spacer = body.appendParagraph("");
-  spacer.editAsText().setFontSize(1);
+  try {
+    var t = body.appendTable([[label.toUpperCase()]]);
+    t.setBorderWidth(0);
+    var cell = t.getCell(0, 0);
+    try { cell.setBackgroundColor(BRAND_LIGHT); } catch (e) {}
+    try {
+      cell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(6).setPaddingRight(6);
+    } catch (e) {}
+    var para = cell.getChild(0).asParagraph();
+    styleText(para, { size: 9, bold: true, color: BRAND_COLOR });
+  } catch (err) {
+    // Fallback: plain bold colored paragraph if the table approach fails
+    var p = body.appendParagraph(label.toUpperCase());
+    styleText(p, { size: 10, bold: true, color: BRAND_COLOR });
+    p.setSpacingBefore(6).setSpacingAfter(2);
+  }
 }
 
 function kvTable(body, rows) {
   // rows: array of [label, value, label, value]
-  // - Empty pairs (both label & value blank) render as truly empty cells.
-  // - Empty values w/ a real label still render "—" for clarity.
-  var table = body.appendTable(rows.map(function () { return ["", "", "", ""]; }));
+  // Empty pairs (both label & value blank) render as truly empty cells.
+  // Empty values w/ a real label still render "—" for clarity.
+  var tableRows = rows.map(function (r) {
+    var l1 = r[0] || "", v1 = r[1] || "", l2 = r[2] || "", v2 = r[3] || "";
+    var emptyPair = !l2 && !v2;
+    return [l1, kvDisplayValue(l1, v1), emptyPair ? "" : l2, emptyPair ? "" : kvDisplayValue(l2, v2)];
+  });
+
+  var table = body.appendTable(tableRows);
   clearTableBorders(table);
-  for (var r = 0; r < rows.length; r++) {
+
+  // Set column widths so long values (emails, addresses, phone blocks) don't
+  // wrap awkwardly. Page content width ≈ 532pt; labels are narrow, values wide.
+  try {
+    table.setColumnWidth(0, 80);   // label 1
+    table.setColumnWidth(1, 186);  // value 1
+    table.setColumnWidth(2, 80);   // label 2
+    table.setColumnWidth(3, 186);  // value 2
+  } catch (e) {}
+
+  for (var r = 0; r < tableRows.length; r++) {
     var row = table.getRow(r);
-    var l1 = rows[r][0], v1 = rows[r][1], l2 = rows[r][2], v2 = rows[r][3];
-
-    fillKvCell(row.getCell(0), l1, true);
-    fillKvCell(row.getCell(1), l1 || v1 ? v1 : "", false, !l1 && !v1);
-    fillKvCell(row.getCell(2), l2, true, !l2 && !v2);
-    fillKvCell(row.getCell(3), l2 || v2 ? v2 : "", false, !l2 && !v2);
-
-    // a bit of vertical breathing room
+    try {
+      styleCellText(row.getCell(0), { size: 8, bold: true, color: MUTED_COLOR });
+      styleCellText(row.getCell(1), { size: 10, bold: true, color: TEXT_COLOR });
+      styleCellText(row.getCell(2), { size: 8, bold: true, color: MUTED_COLOR });
+      styleCellText(row.getCell(3), { size: 10, bold: true, color: TEXT_COLOR });
+    } catch (e) {}
     for (var c = 0; c < 4; c++) {
-      row.getCell(c).setPaddingTop(2).setPaddingBottom(2);
+      try {
+        row.getCell(c).setPaddingTop(2).setPaddingBottom(2)
+          .setPaddingLeft(4).setPaddingRight(4);
+      } catch (e) {}
     }
   }
 }
 
-function fillKvCell(cell, text, isLabel, isEmptyPair) {
-  var para = cell.getChild(0).asParagraph();
-  if (isEmptyPair) {
-    para.setText("");
-    return;
-  }
-  if (isLabel) {
-    para.setText(text || "");
-    styleText(para, { size: 8, bold: true, color: MUTED_COLOR });
-  } else {
-    para.setText(text == null || text === "" ? "—" : String(text));
-    styleText(para, { size: 10, color: TEXT_COLOR, bold: true });
-  }
+function kvDisplayValue(label, value) {
+  // If we have a label but no value, show "—". If neither, show blank.
+  if (!label && !value) return "";
+  if (value == null || value === "") return "—";
+  return String(value);
+}
+
+function styleCellText(cell, style) {
+  try {
+    var para = cell.getChild(0).asParagraph();
+    styleText(para, style || {});
+  } catch (e) {}
 }
 
 function dataTable(body, rows, firstRowIsHeader) {
-  var table = body.appendTable(rows.map(function () { return ["", ""]; }));
-  table.setBorderWidth(0.5).setBorderColor(LINE_COLOR);
-  for (var r = 0; r < rows.length; r++) {
+  var normalized = rows.map(function (r) {
+    return [r[0] == null || r[0] === "" ? "—" : String(r[0]),
+            r[1] == null || r[1] === "" ? "—" : String(r[1])];
+  });
+  var table = body.appendTable(normalized);
+  try { table.setBorderWidth(0.5).setBorderColor(LINE_COLOR); } catch (e) {}
+  try {
+    table.setColumnWidth(0, 200);
+    table.setColumnWidth(1, 332);
+  } catch (e) {}
+
+  for (var r = 0; r < normalized.length; r++) {
     var row = table.getRow(r);
     var isHead = (firstRowIsHeader && r === 0);
-    row.getCell(0).setPaddingTop(3).setPaddingBottom(3);
-    row.getCell(1).setPaddingTop(3).setPaddingBottom(3);
+    try {
+      row.getCell(0).setPaddingTop(3).setPaddingBottom(3)
+        .setPaddingLeft(6).setPaddingRight(6);
+      row.getCell(1).setPaddingTop(3).setPaddingBottom(3)
+        .setPaddingLeft(6).setPaddingRight(6);
+    } catch (e) {}
     if (isHead) {
-      row.getCell(0).setBackgroundColor(BRAND_LIGHT);
-      row.getCell(1).setBackgroundColor(BRAND_LIGHT);
-      setCellText(row.getCell(0), rows[r][0], { size: 8, bold: true, color: BRAND_COLOR });
-      setCellText(row.getCell(1), rows[r][1], { size: 8, bold: true, color: BRAND_COLOR });
+      try {
+        row.getCell(0).setBackgroundColor(BRAND_LIGHT);
+        row.getCell(1).setBackgroundColor(BRAND_LIGHT);
+      } catch (e) {}
+      styleCellText(row.getCell(0), { size: 8, bold: true, color: BRAND_COLOR });
+      styleCellText(row.getCell(1), { size: 8, bold: true, color: BRAND_COLOR });
     } else {
-      setCellText(row.getCell(0), rows[r][0], { size: 9, color: MUTED_COLOR });
-      setCellText(row.getCell(1), rows[r][1], { size: 10, color: TEXT_COLOR, bold: true });
+      styleCellText(row.getCell(0), { size: 9, color: MUTED_COLOR });
+      styleCellText(row.getCell(1), { size: 10, color: TEXT_COLOR, bold: true });
     }
   }
 }
 
 function fillIdCell(cell, label, blob) {
-  cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(4).setPaddingRight(4);
-  setCellText(cell, label, { size: 9, bold: true, color: BRAND_COLOR });
+  try { cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(4).setPaddingRight(4); } catch (e) {}
+  try {
+    var para = cell.getChild(0).asParagraph();
+    para.setText(label);
+    styleText(para, { size: 9, bold: true, color: BRAND_COLOR });
+  } catch (e) {}
   if (blob) {
     try {
       var img = cell.appendImage(blob);
-      img.setWidth(230);
+      var w = 220;
+      img.setWidth(w);
       var ratio = img.getHeight() / img.getWidth();
-      var targetH = Math.min(Math.round(230 * ratio), 180);
+      var targetH = Math.min(Math.round(w * ratio), 150);
       img.setHeight(targetH);
     } catch (err) {
-      cell.appendParagraph("(image error)").editAsText().setFontSize(8).setForegroundColor(MUTED_COLOR);
+      try {
+        cell.appendParagraph("(image error)").editAsText().setFontSize(8).setForegroundColor(MUTED_COLOR);
+      } catch (e) {}
     }
   } else {
-    cell.appendParagraph("(not provided)").editAsText().setFontSize(8).setForegroundColor(MUTED_COLOR);
+    try {
+      cell.appendParagraph("(not provided)").editAsText().setFontSize(8).setForegroundColor(MUTED_COLOR);
+    } catch (e) {}
   }
 }
 

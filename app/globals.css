@@ -19,18 +19,18 @@ body {
   color: #1a1a2e;
 }
 
-/* Section card style */
+/* Section card style — tighter padding on mobile */
 .form-section {
-  @apply bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-5;
+  @apply bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-5;
 }
 
 .section-title {
-  @apply text-sm font-semibold uppercase tracking-widest text-brand-navy mb-5 pb-2 border-b border-gray-200;
+  @apply text-sm font-semibold uppercase tracking-widest text-brand-navy mb-4 sm:mb-5 pb-2 border-b border-gray-200;
 }
 
-/* Input base */
+/* Input base — 16px on mobile prevents iOS auto-zoom */
 .input-base {
-  @apply w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-800
+  @apply w-full px-3 py-3 sm:py-2.5 rounded-lg border border-gray-300 bg-white text-base sm:text-sm text-gray-800
          focus:outline-none focus:ring-2 focus:ring-brand-navy/25 focus:border-brand-navy
          placeholder:text-gray-400 transition;
 }
@@ -46,10 +46,10 @@ body {
   cursor: crosshair;
 }
 
-/* Radio / checkbox pill */
+/* Radio / checkbox pill — larger tap target on mobile */
 .pill-option {
-  @apply flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-300 bg-white cursor-pointer
-         text-sm text-gray-700 transition hover:border-brand-navy hover:bg-brand-navy/5;
+  @apply inline-flex items-center gap-2 px-4 py-3 sm:py-2.5 rounded-lg border border-gray-300 bg-white cursor-pointer
+         text-base sm:text-sm text-gray-700 transition hover:border-brand-navy hover:bg-brand-navy/5;
 }
 
 .pill-option input:checked ~ span {
@@ -60,9 +60,9 @@ body {
   @apply border-brand-navy bg-brand-navy/5;
 }
 
-/* Button */
+/* Buttons — full-width on mobile for easier tapping */
 .btn-primary {
-  @apply bg-brand-navy text-white font-semibold px-8 py-3 rounded-xl text-sm tracking-wide
+  @apply bg-brand-navy text-white font-semibold px-6 sm:px-8 py-3 rounded-xl text-sm tracking-wide
          hover:bg-brand-blue transition active:scale-95 shadow;
 }
 
@@ -72,7 +72,7 @@ body {
 }
 
 .btn-danger {
-  @apply bg-brand-red text-white font-semibold px-5 py-2.5 rounded-lg text-sm tracking-wide
+  @apply bg-brand-red text-white font-semibold px-4 py-2 rounded-lg text-xs sm:text-sm tracking-wide
          hover:bg-brand-redDark transition active:scale-95 shadow;
 }
 

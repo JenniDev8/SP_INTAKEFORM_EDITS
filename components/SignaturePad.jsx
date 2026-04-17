@@ -92,15 +92,15 @@ export default function SignaturePad({ onSave }) {
           </div>
         )}
       </div>
-      <div className="flex justify-between items-center">
-        <p className="text-xs text-gray-400">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+        <p className="text-xs text-gray-500">
           Draw your signature above using your mouse or finger
         </p>
         {hasSignature && (
           <button
             type="button"
             onClick={clear}
-            className="btn-danger text-xs"
+            className="btn-danger self-start sm:self-auto"
           >
             Clear Signature
           </button>
