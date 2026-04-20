@@ -1,8 +1,8 @@
 "use client";
-import { useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useRef, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import SignaturePad from "./SignaturePad";
-import { submitIntakeForm } from "@/lib/submitForm";
+import { submitIntakeForm, validateIntakeToken } from "@/lib/submitForm";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -175,10 +175,49 @@ function CheckboxGroup({ options, value, onChange }) {
 
 export default function IntakeForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const token = searchParams?.get("token") || "";
+
   const [form, setForm] = useState(INITIAL_STATE);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
+
+  // Token state: "checking" | "ok" | "invalid" | "none"
+  const [tokenState, setTokenState] = useState(token ? "checking" : "none");
+  const [tokenInfo, setTokenInfo] = useState(null);
+
+  // Validate the one-time link on first load
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      const result = await validateIntakeToken(token);
+      if (cancelled) return;
+      if (result.valid) {
+        setTokenState("ok");
+        setTokenInfo(result);
+        // Pre-fill the customer name if the admin provided it
+        if (result.customerName) {
+          const parts = String(result.customerName).trim().split(/\s+/);
+          const firstName = parts.shift() || "";
+          const lastName = parts.join(" ");
+          setForm((prev) => ({
+            ...prev,
+            customer: {
+              ...prev.customer,
+              firstName: prev.customer.firstName || firstName,
+              lastName: prev.customer.lastName || lastName,
+            },
+          }));
+        }
+      } else {
+        setTokenState("invalid");
+        setTokenInfo(result);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
 
   // ── Update helpers ──────────────────────────────────────────────────────────
 
@@ -306,7 +345,7 @@ export default function IntakeForm() {
     setSubmitting(true);
     setError(null);
     try {
-      await submitIntakeForm(form);
+      await submitIntakeForm(form, { token });
       setSubmitted(true);
       // Reset after 4 seconds then go back to welcome
       setTimeout(() => {
@@ -317,6 +356,53 @@ export default function IntakeForm() {
       setSubmitting(false);
     }
   };
+
+  // ── Token gate screens (only when arriving via ?token=...) ─────────────────
+
+  if (tokenState === "checking") {
+    return (
+      <div className="min-h-screen bg-brand-light flex flex-col items-center justify-center px-4 py-8">
+        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-8 max-w-md w-full text-center">
+          <div className="mb-5 flex items-center justify-center">
+            <img src="/storage-plus-logo.png" alt="Storage Plus" className="h-10 w-auto" />
+          </div>
+          <div className="w-10 h-10 border-4 border-brand-navy/20 border-t-brand-navy rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-600 text-sm">Verifying your intake link…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (tokenState === "invalid") {
+    const reason = tokenInfo?.reason || "invalid";
+    const reasonLabel = {
+      used:      "This link has already been used.",
+      revoked:   "This link has been revoked.",
+      not_found: "This link is not recognized.",
+      missing:   "No intake link was provided.",
+      error:     "We couldn't verify this link right now.",
+    }[reason] || "This intake link is no longer valid.";
+
+    return (
+      <div className="min-h-screen bg-brand-light flex flex-col items-center justify-center px-4 py-8">
+        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-8 max-w-md w-full text-center">
+          <div className="mb-5 flex items-center justify-center">
+            <img src="/storage-plus-logo.png" alt="Storage Plus" className="h-10 w-auto" />
+          </div>
+          <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4 mx-auto">
+            <svg className="w-7 h-7 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h1 className="font-display text-xl font-bold text-brand-navy mb-2">Link Unavailable</h1>
+          <p className="text-gray-600 text-sm leading-relaxed mb-5">{reasonLabel}</p>
+          <p className="text-gray-500 text-xs">
+            Please contact Storage Plus and we'll send you a new intake link.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // ── Success screen ──────────────────────────────────────────────────────────
 
