@@ -16,11 +16,32 @@
 // Google Sheet ID (from its URL: .../spreadsheets/d/SHEET_ID/edit)
 var SHEET_ID = "1FjuCY18qwszq5vi093auwjN4MFYMSGiea5KhENQbZJ8";
 
-// Google Drive Folder ID (from folder URL: .../drive/folders/FOLDER_ID)
+// Default / fallback Google Drive folder ID
+// (used only if a submission's location doesn't match LOCATION_TO_FOLDER below)
 var DRIVE_FOLDER_ID = "1BxDwPdx4p9V3tgmlMyAX5gz98v1seX5O";
 
-// Name of the tab in your sheet to write to
+// Per-location Drive folder IDs. Create a folder in Drive for each location,
+// copy its ID from the URL (.../drive/folders/FOLDER_ID), and paste below.
+// Leave as "" to fall back to the default DRIVE_FOLDER_ID for that location.
+var LOCATION_TO_FOLDER = {
+  "long island city": "1GIXzdhd8U2TLmvaktuk50aoeasX5F-GQ", // LIC
+  "greenpoint":       "1yNRTIIxb5xBYaM1qLbELErTCca7fQ-MP", // GP
+  "williamsburg":     "1JtlG53xjM-nD0ALy0cQj6_dNkJEJsLQd", // NYC
+  "jamaica":          "1ChuW2gsFVOn9POGXqjJawX45t5vsECXn", // LIB
+};
+
+// Default / fallback sheet tab — used only if a submission's location doesn't
+// match any entry in LOCATION_TO_TAB below.
 var SHEET_TAB = "IntakeForm";
+
+// Route each location to its own sheet tab. The key is matched
+// case-insensitively against the start of `data.location`.
+var LOCATION_TO_TAB = {
+  "long island city": "LIC",
+  "greenpoint":       "GP",
+  "williamsburg":     "NYC",
+  "jamaica":          "LIB",
+};
 
 // ── ADMIN / TOKEN CONFIG ──────────────────────────────────────────────────────
 // Allowed admin emails (work accounts only).
@@ -65,8 +86,6 @@ var COLUMNS = [
   "ZIP+4",
   "Phone Number(s)",
   "Email Address(es)",
-  "Rent Reminder",
-  "Reminder Days",
   "Emergency Contact 1 Name",
   "Emergency Contact 1 Phone",
   "Emergency Contact 2 Name",
@@ -108,8 +127,9 @@ function doPost(e) {
       }
     }
 
-    var sheet = getOrCreateSheet();
-    var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+    var tabName = getTabForLocation(data.location);
+    var sheet = getOrCreateSheet(tabName);
+    var folder = DriveApp.getFolderById(getFolderForLocation(data.location));
 
     // Create a sub-folder per submission named: LastName_FirstName_Timestamp
     var safeFirst = sanitizeName(data.firstName) || "Unknown";
@@ -177,8 +197,6 @@ function doPost(e) {
       data.zipPlusFour || "",
       phonesStr,
       emailsStr,
-      data.rentReminder ? "Yes" : "No",
-      data.reminderDays || "",
       data.emergency1Name || "",
       data.emergency1Phone || "",
       data.emergency2Name || "",
@@ -219,13 +237,21 @@ function doPost(e) {
 
 // ── SHEET HELPER ──────────────────────────────────────────────────────────────
 
-function getOrCreateSheet() {
+function getOrCreateSheet(tabName) {
+  tabName = tabName || SHEET_TAB;
   var ss = SpreadsheetApp.openById(SHEET_ID);
-  var sheet = ss.getSheetByName(SHEET_TAB);
+  var sheet = ss.getSheetByName(tabName);
 
+  var needsHeaders = false;
   if (!sheet) {
-    sheet = ss.insertSheet(SHEET_TAB);
-    // Write headers
+    sheet = ss.insertSheet(tabName);
+    needsHeaders = true;
+  } else if (sheet.getLastRow() === 0) {
+    // Existing but empty tab — populate headers on first use
+    needsHeaders = true;
+  }
+
+  if (needsHeaders) {
     sheet.getRange(1, 1, 1, COLUMNS.length).setValues([COLUMNS]);
     sheet.getRange(1, 1, 1, COLUMNS.length)
       .setBackground("#0F2044")
@@ -235,6 +261,33 @@ function getOrCreateSheet() {
   }
 
   return sheet;
+}
+
+// Map a full location string (e.g., "Greenpoint – 425 Greenpoint Ave…") to the
+// correct sheet tab. Falls back to SHEET_TAB if no prefix matches.
+function getTabForLocation(location) {
+  var l = String(location || "").toLowerCase();
+  if (!l) return SHEET_TAB;
+  var keys = Object.keys(LOCATION_TO_TAB).sort(function (a, b) { return b.length - a.length; });
+  for (var i = 0; i < keys.length; i++) {
+    if (l.indexOf(keys[i]) === 0) return LOCATION_TO_TAB[keys[i]];
+  }
+  return SHEET_TAB;
+}
+
+// Map a full location string to the correct Drive folder ID.
+// Falls back to DRIVE_FOLDER_ID if no match or if the mapped ID is blank.
+function getFolderForLocation(location) {
+  var l = String(location || "").toLowerCase();
+  if (!l) return DRIVE_FOLDER_ID;
+  var keys = Object.keys(LOCATION_TO_FOLDER).sort(function (a, b) { return b.length - a.length; });
+  for (var i = 0; i < keys.length; i++) {
+    if (l.indexOf(keys[i]) === 0) {
+      var id = LOCATION_TO_FOLDER[keys[i]];
+      if (id) return id;
+    }
+  }
+  return DRIVE_FOLDER_ID;
 }
 
 // ── BASE64 HELPER ─────────────────────────────────────────────────────────────
@@ -259,17 +312,14 @@ function base64ToBlob(base64String, prefix) {
 function formatPhones(phonesJson) {
   try {
     var phones = JSON.parse(phonesJson || "[]");
-    return phones.map(function(p) {
-      var line = p.number || "";
-      if (p.ext) line += " ext " + p.ext;
-      if (p.type) line += " [" + p.type + "]";
-      var flags = [];
-      if (p.international) flags.push("Intl");
-      if (p.textAllowed) flags.push("Text OK");
-      if (p.smsEnabled) flags.push("SMS");
-      if (flags.length) line += " (" + flags.join(", ") + ")";
-      return line;
-    }).join(" | ");
+    return phones
+      .filter(function (p) { return p && p.number; })
+      .map(function (p) {
+        var line = p.number || "";
+        if (p.ext) line += " ext " + p.ext;
+        return line;
+      })
+      .join(" | ");
   } catch (e) {
     return phonesJson || "";
   }
@@ -278,9 +328,10 @@ function formatPhones(phonesJson) {
 function formatEmails(emailsJson) {
   try {
     var emails = JSON.parse(emailsJson || "[]");
-    return emails.map(function(em) {
-      return em.address + " [" + em.type + "]";
-    }).join(" | ");
+    return emails
+      .filter(function (em) { return em && em.address; })
+      .map(function (em) { return em.address; })
+      .join(" | ");
   } catch (e) {
     return emailsJson || "";
   }
@@ -393,15 +444,6 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   var emailsText = formatEmails(data.emails) || "—";
   kvTable(body, [
     ["Phone(s)", phonesText, "Email(s)", emailsText],
-  ]);
-
-  // ── Rent Reminder ──
-  sectionHeader(body, "Rent Reminder");
-  var reminderText = data.rentReminder
-    ? "Yes — notify " + (data.reminderDays || "—") + " day(s) in advance"
-    : "No";
-  kvTable(body, [
-    ["Reminder", reminderText, "", ""],
   ]);
 
   // ── Emergency Contacts ──

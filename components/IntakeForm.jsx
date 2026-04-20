@@ -76,9 +76,7 @@ const WHAT_STORED_OPTIONS = [
 
 const JAMAICA_PREFIX = "Jamaica";
 
-const PHONE_TYPES = ["Primary", "Mobile", "Home", "Work", "Fax", "Home Fax", "Pager", "International"];
-const EMAIL_TYPES = ["Primary", "Home", "Work"];
-const CONTRACT_TYPES = ["Business", "Corporate", "Individual", "System Use"];
+const CONTRACT_TYPES = ["Business", "Corporate", "Individual"];
 
 const INITIAL_STATE = {
   location: "",
@@ -88,10 +86,8 @@ const INITIAL_STATE = {
     firstName: "",
     lastName: "",
     mailingAddress: { address: "", aptSte: "", city: "", state: "", zip: "", plusFour: "" },
-    phones: [{ number: "", ext: "", type: "Primary", international: false, textAllowed: false, smsEnabled: false }],
-    emails: [{ type: "Primary", address: "" }],
-    rentReminder: false,
-    reminderDays: "",
+    phones: [{ number: "", ext: "" }],
+    emails: [{ address: "" }],
   },
   emergency: {
     contact1: { name: "", phone: "" },
@@ -250,10 +246,7 @@ export default function IntakeForm() {
       ...prev,
       customer: {
         ...prev.customer,
-        phones: [
-          ...prev.customer.phones,
-          { number: "", ext: "", type: "Mobile", international: false, textAllowed: false, smsEnabled: false },
-        ],
+        phones: [...prev.customer.phones, { number: "", ext: "" }],
       },
     }));
   };
@@ -281,7 +274,7 @@ export default function IntakeForm() {
       ...prev,
       customer: {
         ...prev.customer,
-        emails: [...prev.customer.emails, { type: "Home", address: "" }],
+        emails: [...prev.customer.emails, { address: "" }],
       },
     }));
   };
@@ -342,8 +335,21 @@ export default function IntakeForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSubmitting(true);
     setError(null);
+
+    // Required fields that aren't covered by native HTML validation
+    const missing = [];
+    if (!form.marketing.howHeard) missing.push('"How did you hear about us?"');
+    if (!form.identification.frontImage) missing.push("ID Front photo");
+    if (!form.identification.backImage) missing.push("ID Back photo");
+    if (!form.signature) missing.push("Signature");
+
+    if (missing.length > 0) {
+      setError("Please complete the following before submitting: " + missing.join(", ") + ".");
+      return;
+    }
+
+    setSubmitting(true);
     try {
       await submitIntakeForm(form, { token });
       setSubmitted(true);
@@ -622,30 +628,6 @@ export default function IntakeForm() {
                     />
                   </Field>
                 </div>
-                <Field label="Phone Type">
-                  <Select
-                    value={phone.type}
-                    onChange={(e) => updatePhone(idx, "type", e.target.value)}
-                    options={PHONE_TYPES}
-                  />
-                </Field>
-                <div className="flex flex-wrap gap-4 pt-1">
-                  {[
-                    { key: "international", label: "International" },
-                    { key: "textAllowed", label: "Text Allowed" },
-                    { key: "smsEnabled", label: "SMS Enabled" },
-                  ].map(({ key, label }) => (
-                    <label key={key} className="flex items-center gap-2 cursor-pointer text-sm text-gray-600">
-                      <input
-                        type="checkbox"
-                        className="rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
-                        checked={phone[key]}
-                        onChange={(e) => updatePhone(idx, key, e.target.checked)}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
               </div>
             ))}
             <button
@@ -664,17 +646,11 @@ export default function IntakeForm() {
           <div className="space-y-4">
             {form.customer.emails.map((email, idx) => (
               <div key={idx} className="flex gap-3 flex-wrap items-end">
-                <Field label="Type" half>
-                  <Select
-                    value={email.type}
-                    onChange={(e) => updateEmail(idx, "type", e.target.value)}
-                    options={EMAIL_TYPES}
-                  />
-                </Field>
-                <Field label="Email Address" half>
+                <Field label="Email Address" required>
                   <input
                     className="input-base"
                     type="email"
+                    required={idx === 0}
                     placeholder="name@example.com"
                     value={email.address}
                     onChange={(e) => updateEmail(idx, "address", e.target.value)}
@@ -698,32 +674,6 @@ export default function IntakeForm() {
             >
               + Add Email
             </button>
-
-            {/* Rent Reminder */}
-            <div className="pt-3 border-t border-gray-100 space-y-3">
-              <label className="flex items-center gap-3 cursor-pointer text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  className="rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
-                  checked={form.customer.rentReminder}
-                  onChange={(e) => set("customer.rentReminder", e.target.checked)}
-                />
-                Receive Rent Reminder notifications
-              </label>
-              {form.customer.rentReminder && (
-                <Field label="How many days in advance to notify?">
-                  <input
-                    className="input-base max-w-[160px]"
-                    type="number"
-                    min={1}
-                    max={30}
-                    placeholder="e.g. 5"
-                    value={form.customer.reminderDays}
-                    onChange={(e) => set("customer.reminderDays", e.target.value)}
-                  />
-                </Field>
-              )}
-            </div>
           </div>
         </div>
 
@@ -823,7 +773,7 @@ export default function IntakeForm() {
         <div className="form-section">
           <SectionTitle>Marketing Information</SectionTitle>
           <div className="space-y-5">
-            <Field label="How did you hear about us?">
+            <Field label="How did you hear about us?" required>
               <Select
                 value={form.marketing.howHeard}
                 onChange={(e) => set("marketing.howHeard", e.target.value)}
@@ -866,9 +816,6 @@ export default function IntakeForm() {
         {/* ── PAYMENT ── */}
         <div className="form-section">
           <SectionTitle>Payment Section</SectionTitle>
-          <p className="text-xs text-gray-400 -mt-2 mb-4">
-            No credit card numbers are collected or stored in this system.
-          </p>
           <div className="space-y-5">
             <Field label="How will you pay today?" required>
               <div className="flex flex-wrap gap-2 sm:gap-3">
@@ -929,15 +876,18 @@ export default function IntakeForm() {
         {/* ── ID UPLOAD ── */}
         <div className="form-section">
           <SectionTitle>Identification</SectionTitle>
-          <p className="text-xs text-gray-400 -mt-2 mb-4">
-                   </p>
+          <p className="text-xs text-gray-500 -mt-2 mb-4">
+            Both the front and back of your ID are required.
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               { side: "front", label: "Upload ID (Front)", stored: form.identification.frontName },
               { side: "back", label: "Upload ID (Back)", stored: form.identification.backName },
             ].map(({ side, label, stored }) => (
               <div key={side}>
-                <label className="label-base">{label}</label>
+                <label className="label-base">
+                  {label} <span className="text-red-400">*</span>
+                </label>
                 <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl h-28 bg-gray-50 cursor-pointer hover:border-brand-navy hover:bg-brand-navy/5 transition">
                   {stored ? (
                     <div className="text-center px-3">
@@ -964,10 +914,12 @@ export default function IntakeForm() {
 
         {/* ── SIGNATURE ── */}
         <div className="form-section">
-          <SectionTitle>Signature</SectionTitle>
-          <p className="text-xs text-gray-400 -mt-2 mb-4">
-            By signing below, you confirm that the information provided on this intake form
-            is accurate. 
+          <SectionTitle>
+            Signature <span className="text-red-400">*</span>
+          </SectionTitle>
+          <p className="text-xs text-gray-500 -mt-2 mb-4">
+            By signing below, you confirm that the information provided on this
+            intake form is accurate. A signature is required.
           </p>
           <SignaturePad onSave={(sig) => set("signature", sig)} />
         </div>
