@@ -89,10 +89,6 @@ const INITIAL_STATE = {
     phones: [{ number: "", ext: "" }],
     emails: [{ address: "" }],
   },
-  emergency: {
-    contact1: { name: "", phone: "" },
-    contact2: { name: "", phone: "" },
-  },
   additionalAccess: [
     { name: "", phone: "" },
     { name: "", phone: "" },
@@ -677,57 +673,12 @@ export default function IntakeForm() {
           </div>
         </div>
 
-        {/* ── EMERGENCY CONTACTS ── */}
-        <div className="form-section">
-          <SectionTitle>Emergency Contacts</SectionTitle>
-          <div className="space-y-4">
-            {[
-              { key: "contact1", label: "1st Emergency Contact" },
-              { key: "contact2", label: "2nd Emergency Contact" },
-            ].map(({ key, label }) => (
-              <div key={key} className="flex gap-3 flex-wrap">
-                <Field label={`${label} – Full Name`} half>
-                  <input
-                    className="input-base"
-                    placeholder="Full name"
-                    value={form.emergency[key].name}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        emergency: {
-                          ...prev.emergency,
-                          [key]: { ...prev.emergency[key], name: e.target.value },
-                        },
-                      }))
-                    }
-                  />
-                </Field>
-                <Field label={`${label} – Phone`} half>
-                  <input
-                    className="input-base"
-                    placeholder="(555) 000-0000"
-                    value={form.emergency[key].phone}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        emergency: {
-                          ...prev.emergency,
-                          [key]: { ...prev.emergency[key], phone: e.target.value },
-                        },
-                      }))
-                    }
-                  />
-                </Field>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* ── ADDITIONAL ACCESS ── */}
         <div className="form-section">
           <SectionTitle>Additional Access Authorization</SectionTitle>
-          <p className="text-xs text-gray-400 mb-4 -mt-2">
-            Persons authorized to vacate/close account, transfer, or cut lock
+          <p className="text-xs text-gray-500 mb-4 -mt-2 leading-relaxed">
+            Persons authorized to vacate/close account, transfer, or cut lock,
+            and can be contacted in case of an emergency.
           </p>
           <div className="space-y-4">
             {form.additionalAccess.map((person, idx) => (

@@ -86,10 +86,6 @@ var COLUMNS = [
   "ZIP+4",
   "Phone Number(s)",
   "Email Address(es)",
-  "Emergency Contact 1 Name",
-  "Emergency Contact 1 Phone",
-  "Emergency Contact 2 Name",
-  "Emergency Contact 2 Phone",
   "Additional Access",
   "How Heard",
   "Reason For Storing",
@@ -197,10 +193,6 @@ function doPost(e) {
       data.zipPlusFour || "",
       phonesStr,
       emailsStr,
-      data.emergency1Name || "",
-      data.emergency1Phone || "",
-      data.emergency2Name || "",
-      data.emergency2Phone || "",
       accessStr,
       data.howHeard || "",
       data.reasonForStoring || "",
@@ -444,13 +436,6 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   var emailsText = formatEmails(data.emails) || "—";
   kvTable(body, [
     ["Phone(s)", phonesText, "Email(s)", emailsText],
-  ]);
-
-  // ── Emergency Contacts ──
-  sectionHeader(body, "Emergency Contacts");
-  kvTable(body, [
-    ["1st Name", safe(data.emergency1Name), "1st Phone", safe(data.emergency1Phone)],
-    ["2nd Name", safe(data.emergency2Name), "2nd Phone", safe(data.emergency2Phone)],
   ]);
 
   // ── Additional Access ──
