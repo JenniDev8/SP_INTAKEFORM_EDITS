@@ -620,24 +620,17 @@ function formatNiceDate(iso) {
 }
 
 // ── INTAKE FORM PDF GENERATOR ─────────────────────────────────────────────────
-// Produces a clean, branded, print-ready PDF intake summary.
-// Layout: Google Doc → export as PDF → save to Drive submission folder.
-//
-// COLOR STRATEGY (ink-friendly):
-//   • Header:          #EEF1F8 tint bg + thin navy top/bottom stripes
-//   • Section bars:    #EEF1F8 tint bg + navy bold text + 4pt navy left stripe
-//   • Table headers:   #EEF1F8 tint bg + navy bold text
-//   • Alternating rows: #F9FAFB (barely-there gray)
-//   • No full navy fills anywhere on the page body
+// Clean, minimal, professional — white background throughout.
+// No colored fills. Section headers = navy bold text + thin rule only.
+// Inspired by professional legal/medical document design.
 
-var BRAND_NAVY   = "#152C73";   // Storage Plus navy — used for TEXT only
-var BRAND_LIGHT  = "#EEF1F8";   // soft blue-gray tint — section bars & header bg
-var BRAND_WHITE  = "#FFFFFF";
-var TEXT_DARK    = "#1F2937";
-var TEXT_MUTED   = "#6B7280";
-var TEXT_LABEL   = "#374151";
-var RULE_COLOR   = "#D1D5DB";
-var ROW_ALT      = "#F9FAFB";   // alternating row tint (near-white)
+var BRAND_NAVY  = "#152C73";
+var TEXT_DARK   = "#1A1A2E";
+var TEXT_MED    = "#374151";
+var TEXT_MUTED  = "#9CA3AF";
+var RULE_LIGHT  = "#E5E7EB";   // very light gray — table borders & dividers
+var RULE_NAVY   = "#152C73";   // used only for section underlines (thin)
+var ROW_ALT     = "#F9FAFB";   // barely-there alternating row tint
 
 var LOGO_URL = "https://nystorage.com/wp-content/uploads/2023/05/Storage-Plus-New-Color-logo.png";
 
@@ -661,131 +654,90 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   var doc  = DocumentApp.create(tempName);
   var body = doc.getBody();
 
-  // Page setup — US Letter, tighter margins for more usable content area
   body.setPageWidth(612).setPageHeight(792);
-  body.setMarginTop(36).setMarginBottom(36).setMarginLeft(45).setMarginRight(45);
+  body.setMarginTop(45).setMarginBottom(45).setMarginLeft(54).setMarginRight(54);
 
-  var PW = 522; // usable page width (612 - 45 - 45)
+  var PW = 504; // 612 - 54 - 54
 
-  // ── 1. PAGE HEADER ────────────────────────────────────────────────────────
-  // Light tint banner: logo left | title + meta right
-  // Thin navy stripes above & below simulate a border without flooding the
-  // area with heavy navy fill (saves toner).
+  // ── 1. HEADER — logo left, title right, thin navy rule below ──────────────
+  var hdrTbl = body.appendTable([["", ""]]);
+  hdrTbl.setBorderWidth(0);
+  try { hdrTbl.setColumnWidth(0, Math.round(PW * 0.55)); } catch(e) {}
+  try { hdrTbl.setColumnWidth(1, Math.round(PW * 0.45)); } catch(e) {}
 
-  // Top accent stripe
-  var stripeTbl = body.appendTable([[""]]);
-  stripeTbl.setBorderWidth(0);
-  try { stripeTbl.setColumnWidth(0, PW); } catch(e) {}
-  var stripeCell = stripeTbl.getCell(0, 0);
-  try { stripeCell.setBackgroundColor(BRAND_NAVY); } catch(e) {}
-  try { stripeCell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
-  stripeCell.getChild(0).asParagraph().editAsText().setFontSize(1).setForegroundColor(BRAND_NAVY);
-
-  // Main header row — light tint background, two columns
-  var headerTbl = body.appendTable([["", ""]]);
-  headerTbl.setBorderWidth(0);
-  var LW = Math.round(PW * 0.56);
-  var RW = PW - LW;
-  try { headerTbl.setColumnWidth(0, LW); headerTbl.setColumnWidth(1, RW); } catch(e) {}
-
-  var leftCell  = headerTbl.getCell(0, 0);
-  var rightCell = headerTbl.getCell(0, 1);
-  [leftCell, rightCell].forEach(function(c) {
-    try { c.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
-    try { c.setPaddingTop(10).setPaddingBottom(10).setPaddingLeft(12).setPaddingRight(12); } catch(e) {}
+  var lCell = hdrTbl.getCell(0, 0);
+  var rCell = hdrTbl.getCell(0, 1);
+  [lCell, rCell].forEach(function(c) {
+    try { c.setPaddingTop(0).setPaddingBottom(8).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
   });
 
-  // Logo in left cell
+  // Logo
   var logoBlob = getLogoBlob();
+  var lp = lCell.getChild(0).asParagraph();
   if (logoBlob) {
     try {
-      var lp = leftCell.getChild(0).asParagraph();
       lp.setText("");
       var logoImg = lp.appendInlineImage(logoBlob);
-      var origW = logoImg.getWidth(), origH = logoImg.getHeight();
-      var tw = 155;
+      var tw = 150;
       logoImg.setWidth(tw);
+      var origW = logoImg.getWidth(), origH = logoImg.getHeight();
       if (origW > 0) logoImg.setHeight(Math.round(origH * (tw / origW)));
     } catch(e) {
-      setParaStyle(leftCell.getChild(0).asParagraph(), "STORAGE PLUS",
-        { size: 15, bold: true, color: BRAND_NAVY });
+      lp.setText("STORAGE PLUS");
+      lp.editAsText().setFontSize(16).setBold(true).setForegroundColor(BRAND_NAVY);
     }
   } else {
-    setParaStyle(leftCell.getChild(0).asParagraph(), "STORAGE PLUS",
-      { size: 15, bold: true, color: BRAND_NAVY });
+    lp.setText("STORAGE PLUS");
+    lp.editAsText().setFontSize(16).setBold(true).setForegroundColor(BRAND_NAVY);
   }
 
-  // Title + date/location in right cell — right-aligned, navy text on tint
-  var rp = rightCell.getChild(0).asParagraph();
+  // Right: title + meta, right-aligned
+  var rp = rCell.getChild(0).asParagraph();
   rp.setText("INTAKE FORM SUMMARY");
   rp.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
-  rp.editAsText().setFontSize(12).setBold(true).setForegroundColor(BRAND_NAVY);
+  rp.editAsText().setFontSize(10).setBold(true).setForegroundColor(BRAND_NAVY);
 
-  var sub = rightCell.appendParagraph(formatNiceDate(data.timestamp));
-  sub.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
-  sub.editAsText().setFontSize(8).setBold(false).setForegroundColor(TEXT_MUTED);
+  var dateLine = rCell.appendParagraph(formatNiceDate(data.timestamp));
+  dateLine.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  dateLine.editAsText().setFontSize(8).setBold(false).setForegroundColor(TEXT_MUTED);
 
-  var locLine = rightCell.appendParagraph(safe(data.location));
+  var locLine = rCell.appendParagraph(safe(data.location));
   locLine.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
   locLine.editAsText().setFontSize(8).setBold(false).setForegroundColor(TEXT_MUTED);
 
-  // Bottom accent stripe to close the header
-  var stripeBotTbl = body.appendTable([[""]]);
-  stripeBotTbl.setBorderWidth(0);
-  try { stripeBotTbl.setColumnWidth(0, PW); } catch(e) {}
-  var stripeBotCell = stripeBotTbl.getCell(0, 0);
-  try { stripeBotCell.setBackgroundColor(BRAND_NAVY); } catch(e) {}
-  try { stripeBotCell.setPaddingTop(2).setPaddingBottom(2).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
-  stripeBotCell.getChild(0).asParagraph().editAsText().setFontSize(1).setForegroundColor(BRAND_NAVY);
-
-  spacer(body, 8);
+  // Thin navy divider below header
+  navyRule(body, PW);
+  spacer(body, 10);
 
   // ── 2. CUSTOMER INFORMATION ───────────────────────────────────────────────
-  sectionBar(body, "CUSTOMER INFORMATION", PW);
+  sectionLabel(body, "Customer Information");
 
-  var isBusinessStr = String(data.contractType || "").toLowerCase();
-  var isBusiness    = (isBusinessStr === "business");
-
-  kvGrid(body, PW, [
-    { label: "Account Type",  value: safe(data.contractType) },
-    { label: "Business Name", value: isBusiness ? safe(data.businessName) : "" },
-  ]);
-  kvGrid(body, PW, [
-    { label: "First Name", value: safe(data.firstName) },
-    { label: "Last Name",  value: safe(data.lastName)  },
-  ]);
-
-  spacer(body, 6);
+  var isBusiness = String(data.contractType || "").toLowerCase() === "business";
+  fieldRow(body, PW, "Contract Type", safe(data.contractType),
+                     "Business Name", isBusiness ? safe(data.businessName) : "—");
+  fieldRow(body, PW, "First Name", safe(data.firstName),
+                     "Last Name",  safe(data.lastName));
+  spacer(body, 10);
 
   // ── 3. MAILING ADDRESS ────────────────────────────────────────────────────
-  sectionBar(body, "MAILING ADDRESS", PW);
+  sectionLabel(body, "Mailing Address");
 
-  kvGrid(body, PW, [
-    { label: "Street Address", value: safe(data.mailingAddress) },
-    { label: "City",           value: safe(data.city)           },
-  ]);
-  kvGrid(body, PW, [
-    { label: "State", value: safe(data.state) },
-    { label: "ZIP",   value: safe(data.zip) + (data.zipPlusFour ? "-" + data.zipPlusFour : "") },
-  ]);
-
-  spacer(body, 6);
+  fieldRow(body, PW, "Street Address", safe(data.mailingAddress),
+                     "City",           safe(data.city));
+  fieldRow(body, PW, "State", safe(data.state),
+                     "ZIP",   safe(data.zip) + (data.zipPlusFour ? "-" + data.zipPlusFour : ""));
+  spacer(body, 10);
 
   // ── 4. CONTACT INFORMATION ────────────────────────────────────────────────
-  sectionBar(body, "CONTACT INFORMATION", PW);
+  sectionLabel(body, "Contact Information");
 
-  var phonesText = formatPhones(data.phones) || "—";
-  var emailsText = formatEmails(data.emails) || "—";
-
-  kvGrid(body, PW, [
-    { label: "Phone Number(s)",   value: phonesText },
-    { label: "Email Address(es)", value: emailsText },
-  ]);
-
-  spacer(body, 6);
+  fieldRow(body, PW,
+    "Phone Number(s)",   formatPhones(data.phones) || "—",
+    "Email Address(es)", formatEmails(data.emails) || "—");
+  spacer(body, 10);
 
   // ── 5. ACCESS AUTHORIZATION ───────────────────────────────────────────────
-  sectionBar(body, "ACCESS AUTHORIZATION", PW);
+  sectionLabel(body, "Access Authorization");
 
   var accessPeople = [];
   try { accessPeople = JSON.parse(data.additionalAccess || "[]"); } catch(e) {}
@@ -794,71 +746,60 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   if (accessPeople.length === 0) {
     var noneP = body.appendParagraph("None provided");
     noneP.editAsText().setFontSize(9).setItalic(true).setForegroundColor(TEXT_MUTED);
-    try { noneP.setSpacingBefore(3).setSpacingAfter(3); } catch(e) {}
+    try { noneP.setSpacingBefore(2).setSpacingAfter(2); } catch(e) {}
   } else {
     var accessData = [["Name", "Phone Number"]];
-    accessPeople.forEach(function(p) {
-      accessData.push([safe(p.name), safe(p.phone)]);
-    });
-    styledDataTable(body, PW, accessData, true);
+    accessPeople.forEach(function(p) { accessData.push([safe(p.name), safe(p.phone)]); });
+    cleanTable(body, PW, accessData, true);
   }
+  spacer(body, 10);
 
-  spacer(body, 6);
+  // ── 6. STORAGE & PAYMENT ──────────────────────────────────────────────────
+  sectionLabel(body, "Storage & Payment Details");
 
-  // ── 6. STORAGE & PAYMENT DETAILS ──────────────────────────────────────────
-  sectionBar(body, "STORAGE & PAYMENT DETAILS", PW);
+  fieldRow(body, PW, "Rental Start Date",   safe(data.rentalStartDate),
+                     "Payment Method",       safe(data.paymentMethod));
+  fieldRow(body, PW, "Enrolled in Autopay", safe(data.autopay),
+                     "",                     "");
+  spacer(body, 10);
 
-  kvGrid(body, PW, [
-    { label: "Rental Start Date", value: safe(data.rentalStartDate) },
-    { label: "Payment Method",     value: safe(data.paymentMethod)    },
-  ]);
-  kvGrid(body, PW, [
-    { label: "Enrolled in Autopay", value: safe(data.autopay) },
-    { label: "",                    value: ""                 },
-  ]);
-
-  spacer(body, 6);
-
-  // ── 7. MARKETING INFORMATION ──────────────────────────────────────────────
-  sectionBar(body, "MARKETING & STORAGE INFORMATION", PW);
+  // ── 7. MARKETING ──────────────────────────────────────────────────────────
+  sectionLabel(body, "Marketing & Storage Information");
 
   var mktRows = [["How did you hear about us?", safe(data.howHeard)]];
   if (data.reasonForStoring) mktRows.push(["Reason for storing",   safe(data.reasonForStoring)]);
   if (data.whyChose)         mktRows.push(["Why they chose us",    safe(data.whyChose)]);
   if (data.whatStored)       mktRows.push(["What is being stored", safe(data.whatStored)]);
-  styledDataTable(body, PW, mktRows, false);
-
+  cleanTable(body, PW, mktRows, false);
   spacer(body, 6);
 
-  // ── PAGE BREAK before IDs + signature ─────────────────────────────────────
+  // ── PAGE 2 ────────────────────────────────────────────────────────────────
   body.appendPageBreak();
 
-  // ── 8. IDENTIFICATION DOCUMENTS ───────────────────────────────────────────
-  sectionBar(body, "IDENTIFICATION DOCUMENTS", PW);
-  spacer(body, 4);
+  // ── 8. IDENTIFICATION ─────────────────────────────────────────────────────
+  sectionLabel(body, "Identification Documents");
+  spacer(body, 6);
 
   var idTbl = body.appendTable([["", ""]]);
   idTbl.setBorderWidth(0);
   var halfW = Math.floor(PW / 2) - 6;
   try { idTbl.setColumnWidth(0, halfW); idTbl.setColumnWidth(1, halfW); } catch(e) {}
-
   buildIdCell(idTbl.getCell(0, 0), "ID — Front", idFrontBlob);
   buildIdCell(idTbl.getCell(0, 1), "ID — Back",  idBackBlob);
-
-  spacer(body, 10);
+  spacer(body, 14);
 
   // ── 9. SIGNATURE ──────────────────────────────────────────────────────────
-  sectionBar(body, "CUSTOMER SIGNATURE", PW);
-  spacer(body, 6);
+  sectionLabel(body, "Customer Signature");
+  spacer(body, 8);
 
   if (signatureBlob) {
     try {
       var sigP = body.appendParagraph("");
       var sigImg = sigP.appendInlineImage(signatureBlob);
-      var sigW = 300;
+      var sigW = 280;
       sigImg.setWidth(sigW);
       var ratio = sigImg.getHeight() / Math.max(sigImg.getWidth(), 1);
-      sigImg.setHeight(Math.min(Math.round(sigW * ratio), 120));
+      sigImg.setHeight(Math.min(Math.round(sigW * ratio), 110));
     } catch(e) {
       var errP = body.appendParagraph("(signature rendering error)");
       errP.editAsText().setFontSize(9).setItalic(true).setForegroundColor(TEXT_MUTED);
@@ -869,40 +810,35 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   }
 
   var sigCaption = body.appendParagraph(
-    "Signed by:  " + safe(data.firstName) + " " + safe(data.lastName) +
-    "     |     Date: " + formatNiceDate(data.timestamp)
+    "Digitally signed by " + safe(data.firstName) + " " + safe(data.lastName) +
+    "  ·  " + formatNiceDate(data.timestamp)
   );
-  try { sigCaption.setSpacingBefore(6); } catch(e) {}
-  sigCaption.editAsText().setFontSize(9).setForegroundColor(TEXT_DARK);
+  try { sigCaption.setSpacingBefore(5); } catch(e) {}
+  sigCaption.editAsText().setFontSize(8).setForegroundColor(TEXT_MUTED);
 
   spacer(body, 20);
-  var sigLine = body.appendParagraph("_____________________________________________      Date: _______________");
-  sigLine.editAsText().setFontSize(10).setForegroundColor(TEXT_DARK);
 
-  var sigNameLabel = body.appendParagraph("Tenant Signature");
-  sigNameLabel.editAsText().setFontSize(8).setForegroundColor(TEXT_MUTED);
-  try { sigNameLabel.setSpacingBefore(2); } catch(e) {}
+  // Printed signature line
+  var sigLine = body.appendParagraph("X  _____________________________________________");
+  sigLine.editAsText().setFontSize(11).setForegroundColor(TEXT_DARK);
 
-  spacer(body, 16);
+  var sigLabel = body.appendParagraph("Tenant Signature                                          Date: _______________");
+  sigLabel.editAsText().setFontSize(8).setForegroundColor(TEXT_MUTED);
+  try { sigLabel.setSpacingBefore(3); } catch(e) {}
 
-  // ── 10. FOOTER DISCLAIMER ─────────────────────────────────────────────────
-  var footerTbl = body.appendTable([[""]]);
-  footerTbl.setBorderWidth(0);
-  try { footerTbl.setColumnWidth(0, PW); } catch(e) {}
-  var fc = footerTbl.getCell(0, 0);
-  try { fc.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
-  try { fc.setPaddingTop(6).setPaddingBottom(6).setPaddingLeft(10).setPaddingRight(10); } catch(e) {}
-  var fp = fc.getChild(0).asParagraph();
-  fp.setText(
-    "DISCLAIMER:  This document is an intake summary only and does not constitute a rental agreement or contract. " +
-    "The official rental agreement is signed separately at the facility. " +
-    "Storage Plus | nystorage.com"
+  spacer(body, 24);
+
+  // ── 10. FOOTER ────────────────────────────────────────────────────────────
+  navyRule(body, PW);
+  spacer(body, 6);
+  var footP = body.appendParagraph(
+    "This document is an intake summary only and does not constitute a rental agreement or contract. " +
+    "The official rental agreement is signed separately at the facility.  ·  Storage Plus  |  nystorage.com"
   );
-  fp.editAsText().setFontSize(7.5).setForegroundColor(TEXT_MUTED).setItalic(true);
+  footP.editAsText().setFontSize(7.5).setItalic(true).setForegroundColor(TEXT_MUTED);
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
   doc.saveAndClose();
-
   var docFile = DriveApp.getFileById(doc.getId());
   var pdfBlob = docFile.getAs("application/pdf").setName("Intake_Form_" + nameSuffix + ".pdf");
   var pdfFile = folder.createFile(pdfBlob);
@@ -913,78 +849,93 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
 
 
 // =============================================================================
-// ── DOC LAYOUT HELPERS ────────────────────────────────────────────────────────
+// ── LAYOUT HELPERS ────────────────────────────────────────────────────────────
 // =============================================================================
 
-// Light tint section bar — navy bold text on #EEF1F8 background
-// A 4pt navy stripe on the left gives it a distinctive accent without
-// using heavy fill across the whole row (saves toner).
-function sectionBar(body, label, pageWidth) {
-  var STRIPE_W = 4;
-  var tbl = body.appendTable([["", label]]);
-  tbl.setBorderWidth(0);
-  try { tbl.setColumnWidth(0, STRIPE_W); tbl.setColumnWidth(1, pageWidth - STRIPE_W); } catch(e) {}
+// Section label: navy bold text + thin navy underline rule
+function sectionLabel(body, label) {
+  var tbl = body.appendTable([[label.toUpperCase()]]);
 
-  var stripeCell = tbl.getCell(0, 0);
-  try { stripeCell.setBackgroundColor(BRAND_NAVY); } catch(e) {}
-  try { stripeCell.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
-  stripeCell.getChild(0).asParagraph().editAsText().setFontSize(1).setForegroundColor(BRAND_NAVY);
+  try {
+    tbl.setBorderWidth(0);
+    var cell = tbl.getCell(0, 0);
 
-  var labelCell = tbl.getCell(0, 1);
-  try { labelCell.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
-  try { labelCell.setPaddingTop(5).setPaddingBottom(5).setPaddingLeft(10).setPaddingRight(10); } catch(e) {}
-  var p = labelCell.getChild(0).asParagraph();
-  p.setText(label);
-  p.editAsText().setFontSize(8).setBold(true).setForegroundColor(BRAND_NAVY);
-  try { p.setSpacingBefore(0).setSpacingAfter(0); } catch(e) {}
+    var p = cell.getChild(0).asParagraph();
+    p.setText(label.toUpperCase());
+    p.editAsText()
+      .setFontSize(8)
+      .setBold(true)
+      .setForegroundColor(BRAND_NAVY);
+
+    try { cell.setPaddingTop(0).setPaddingBottom(4).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
+  } catch(e) {}
+
+  // Thin navy rule directly under the section label
+  navyRule(body, 504);
+  spacer(body, 4);
 }
 
-// Two-column key/value grid — each item is { label, value }
-function kvGrid(body, pageWidth, items) {
-  var LABEL_W = 95;
-  var VAL_W   = Math.floor(pageWidth / 2) - LABEL_W - 2;
+// Thin full-width navy horizontal rule (1pt height table)
+function navyRule(body, pageWidth) {
+  var t = body.appendTable([[""]]);
+  t.setBorderWidth(0);
+  try { t.setColumnWidth(0, pageWidth || 504); } catch(e) {}
+  var c = t.getCell(0, 0);
+  try { c.setBackgroundColor(BRAND_NAVY); } catch(e) {}
+  try { c.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
+  c.getChild(0).asParagraph().editAsText().setFontSize(0.75).setForegroundColor(BRAND_NAVY);
+}
 
-  var cols = [[
-    items[0] ? items[0].label : "",
-    items[0] ? kvVal(items[0].value) : "",
-    items[1] ? items[1].label : "",
-    items[1] ? kvVal(items[1].value) : "",
-  ]];
+// Two-pair field row: label1 | value1 | label2 | value2
+// Labels are small gray caps above; values are large dark bold below.
+// Rendered as a 4-column borderless table.
+function fieldRow(body, pageWidth, label1, value1, label2, value2) {
+  var LW = 85;  // label column width
+  var VW = Math.floor(pageWidth / 2) - LW;
 
-  var tbl = body.appendTable(cols);
+  var hasSecond = label2 || value2;
+
+  var tbl = body.appendTable([[
+    label1 || "",
+    displayVal(value1),
+    hasSecond ? (label2 || "") : "",
+    hasSecond ? displayVal(value2) : "",
+  ]]);
   tbl.setBorderWidth(0);
   try {
-    tbl.setColumnWidth(0, LABEL_W);
-    tbl.setColumnWidth(1, VAL_W);
-    tbl.setColumnWidth(2, LABEL_W);
-    tbl.setColumnWidth(3, VAL_W);
+    tbl.setColumnWidth(0, LW);
+    tbl.setColumnWidth(1, VW);
+    tbl.setColumnWidth(2, LW);
+    tbl.setColumnWidth(3, VW);
   } catch(e) {}
 
   var row = tbl.getRow(0);
   for (var c = 0; c < 4; c++) {
-    try { row.getCell(c).setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(5).setPaddingRight(5); } catch(e) {}
+    try { row.getCell(c).setPaddingTop(2).setPaddingBottom(4).setPaddingLeft(0).setPaddingRight(6); } catch(e) {}
   }
 
+  // Label columns — small, muted, uppercase
   [0, 2].forEach(function(ci) {
-    var p = row.getCell(ci).getChild(0).asParagraph();
-    p.editAsText().setFontSize(7.5).setBold(false).setForegroundColor(TEXT_MUTED);
+    row.getCell(ci).getChild(0).asParagraph()
+      .editAsText().setFontSize(7).setBold(false).setForegroundColor(TEXT_MUTED);
   });
+  // Value columns — dark, bold, readable
   [1, 3].forEach(function(ci) {
-    var p = row.getCell(ci).getChild(0).asParagraph();
-    p.editAsText().setFontSize(10).setBold(true).setForegroundColor(TEXT_DARK);
+    row.getCell(ci).getChild(0).asParagraph()
+      .editAsText().setFontSize(10).setBold(true).setForegroundColor(TEXT_DARK);
   });
 }
 
-function kvVal(v) {
+function displayVal(v) {
   if (v === undefined || v === null || String(v).trim() === "" || v === "—") return "—";
   return String(v);
 }
 
-// Two-column data table with optional header row
-function styledDataTable(body, pageWidth, rows, hasHeader) {
+// Clean two-column data table — minimal borders, no colored fills
+// Header row gets navy bold text on white; alternating rows get near-white tint
+function cleanTable(body, pageWidth, rows, hasHeader) {
   if (!rows || rows.length === 0) return;
-
-  var COL1_W = 185;
+  var COL1_W = 180;
   var COL2_W = pageWidth - COL1_W;
 
   var tbl = body.appendTable(rows.map(function(r) {
@@ -994,91 +945,73 @@ function styledDataTable(body, pageWidth, rows, hasHeader) {
     ];
   }));
 
-  try { tbl.setBorderWidth(0.5).setBorderColor(RULE_COLOR); } catch(e) {}
+  try { tbl.setBorderWidth(0.5).setBorderColor(RULE_LIGHT); } catch(e) {}
   try { tbl.setColumnWidth(0, COL1_W); tbl.setColumnWidth(1, COL2_W); } catch(e) {}
 
   for (var r = 0; r < rows.length; r++) {
     var row = tbl.getRow(r);
     var isHead = hasHeader && r === 0;
-    var isAlt  = !isHead && (r % 2 === 0);
+    var isAlt  = !isHead && r % 2 === 1;
 
     for (var c = 0; c < 2; c++) {
       var cell = row.getCell(c);
-      try { cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(8).setPaddingRight(8); } catch(e) {}
+      try { cell.setPaddingTop(5).setPaddingBottom(5).setPaddingLeft(8).setPaddingRight(8); } catch(e) {}
+      if (isAlt) { try { cell.setBackgroundColor(ROW_ALT); } catch(e) {} }
 
+      var p = cell.getChild(0).asParagraph();
       if (isHead) {
-        try { cell.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
-        cell.getChild(0).asParagraph().editAsText()
-          .setFontSize(8).setBold(true).setForegroundColor(BRAND_NAVY);
-      } else if (isAlt) {
-        try { cell.setBackgroundColor(ROW_ALT); } catch(e) {}
-        styleDataCell(cell, c === 0);
+        // Header: no fill, just navy bold text
+        p.editAsText().setFontSize(8).setBold(true).setForegroundColor(BRAND_NAVY);
+      } else if (c === 0) {
+        p.editAsText().setFontSize(8.5).setBold(false).setForegroundColor(TEXT_MED);
       } else {
-        styleDataCell(cell, c === 0);
+        p.editAsText().setFontSize(9.5).setBold(true).setForegroundColor(TEXT_DARK);
       }
     }
   }
 }
 
-function styleDataCell(cell, isLabel) {
-  var p = cell.getChild(0).asParagraph();
-  if (isLabel) {
-    p.editAsText().setFontSize(8.5).setBold(false).setForegroundColor(TEXT_LABEL);
-  } else {
-    p.editAsText().setFontSize(9.5).setBold(true).setForegroundColor(TEXT_DARK);
-  }
-}
-
-// Build one ID photo cell — light tint bg, label, image
+// ID photo cell — light border box, label, image
 function buildIdCell(cell, label, blob) {
-  try { cell.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
-  try { cell.setPaddingTop(6).setPaddingBottom(6).setPaddingLeft(6).setPaddingRight(6); } catch(e) {}
+  try { cell.setPaddingTop(8).setPaddingBottom(8).setPaddingLeft(8).setPaddingRight(8); } catch(e) {}
 
+  // Label
   var lp = cell.getChild(0).asParagraph();
-  lp.setText(label.toUpperCase());
-  lp.editAsText().setFontSize(7.5).setBold(true).setForegroundColor(BRAND_NAVY);
-  try { lp.setSpacingAfter(4); } catch(e) {}
+  lp.setText(label);
+  lp.editAsText().setFontSize(8).setBold(true).setForegroundColor(BRAND_NAVY);
+  try { lp.setSpacingAfter(5); } catch(e) {}
 
   if (blob) {
     try {
       var ip = cell.appendParagraph("");
       var img = ip.appendInlineImage(blob);
-      var maxW = 200, maxH = 130;
+      var maxW = 210, maxH = 140;
       var origW = img.getWidth(), origH = img.getHeight();
       var scale = Math.min(maxW / Math.max(origW, 1), maxH / Math.max(origH, 1), 1);
       img.setWidth(Math.round(origW * scale));
       img.setHeight(Math.round(origH * scale));
     } catch(e) {
-      var ep = cell.appendParagraph("(image error)");
-      ep.editAsText().setFontSize(8).setItalic(true).setForegroundColor(TEXT_MUTED);
+      cell.appendParagraph("(image error)").editAsText()
+        .setFontSize(8).setItalic(true).setForegroundColor(TEXT_MUTED);
     }
   } else {
-    var np = cell.appendParagraph("Not provided");
-    np.editAsText().setFontSize(8).setItalic(true).setForegroundColor(TEXT_MUTED);
+    cell.appendParagraph("Not provided").editAsText()
+      .setFontSize(8).setItalic(true).setForegroundColor(TEXT_MUTED);
   }
 }
 
+// Blank spacer
 function spacer(body, pts) {
   var p = body.appendParagraph("");
   try { p.setSpacingBefore(0).setSpacingAfter(pts || 6); } catch(e) {}
   p.editAsText().setFontSize(1);
 }
 
-function setParaStyle(para, text, opts) {
-  para.setText(text);
-  var t = para.editAsText();
-  if (opts.size)         t.setFontSize(opts.size);
-  if (opts.bold != null) t.setBold(opts.bold);
-  if (opts.color)        t.setForegroundColor(opts.color);
-  if (opts.italic != null) t.setItalic(opts.italic);
-}
-
 // ── PDF PREVIEW HELPER ────────────────────────────────────────────────────────
-// Run this directly from the Apps Script editor (select `previewIntakePdf`
-// from the function dropdown and press Run) to generate a sample PDF with
-// dummy data so you can iterate on styling without submitting the real form.
-// The resulting PDF link will be printed to the execution log.
-
+// Run from the Apps Script editor (select `previewIntakePdf` in the function
+// dropdown and press Run) to generate a sample PDF with dummy data so you can
+// iterate on styling without submitting the real form. The result link is
+// printed to the execution log.
 function previewIntakePdf() {
   var folderId = (typeof DRIVE_FOLDER_ID !== "undefined" && DRIVE_FOLDER_ID) ? DRIVE_FOLDER_ID : null;
   if (!folderId) {
