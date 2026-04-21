@@ -108,7 +108,7 @@ var COLUMNS = [
   "What Is Being Stored",
   "Payment Method",
   "Autopay",
-  "Lease Start Date",
+  "Rental Start Date",
   "ID Front (Drive Link)",
   "ID Back (Drive Link)",
   "Signature (Drive Link)",
@@ -223,7 +223,7 @@ function doPost(e) {
       data.whatStored || "",
       data.paymentMethod || "",   // "Credit Card" or "Cash" — no card number
       data.autopay || "",
-      data.storageStartDate || "",
+      data.rentalStartDate || "",
       idFrontLink,
       idBackLink,
       signatureLink,
@@ -769,7 +769,7 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   sectionBar(body, "STORAGE & PAYMENT DETAILS", PW);
 
   kvGrid(body, PW, [
-    { label: "Storage Start Date", value: safe(data.storageStartDate) },
+    { label: "Rental Start Date", value: safe(data.rentalStartDate) },
     { label: "Payment Method",     value: safe(data.paymentMethod)    },
   ]);
   kvGrid(body, PW, [
@@ -1072,7 +1072,7 @@ function previewIntakePdf() {
     whatStored: "Furniture, boxes, seasonal items",
     paymentMethod: "Credit Card",
     autopay: "Yes",
-    storageStartDate: "2026-05-01",
+    rentalStartDate: "2026-05-01",
   };
 
   var result = generateIntakePdf(previewFolder, sampleData, "PREVIEW_Jane_Doe", null, null, null);

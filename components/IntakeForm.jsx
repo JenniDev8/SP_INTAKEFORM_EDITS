@@ -821,13 +821,13 @@ export default function IntakeForm() {
           </div>
         </div>
 
-        {/* ── STORAGE START DATE ── */}
+        {/* ── RENTAL START DATE ── */}
         <div className="form-section">
-          <SectionTitle>Storage Start Date</SectionTitle>
+          <SectionTitle>Rental Start Date</SectionTitle>
           <p className="text-sm text-gray-600 leading-relaxed mb-4">
             Please select the date you would like to start your storage rental.
           </p>
-          <Field label="Storage Start Date" required>
+          <Field label="Rental Start Date" required>
             <input
               className="input-base max-w-xs"
               type="date"
