@@ -83,6 +83,7 @@ const INITIAL_STATE = {
   marketing: { howHeard: "", reasonForStoring: "", whyChose: "", whatStored: "" },
   customer: {
     contractType: "",
+    businessName: "",
     firstName: "",
     lastName: "",
     mailingAddress: { address: "", aptSte: "", city: "", state: "", zip: "", plusFour: "" },
@@ -335,6 +336,9 @@ export default function IntakeForm() {
 
     // Required fields that aren't covered by native HTML validation
     const missing = [];
+    if (form.customer.contractType === "Business" && !form.customer.businessName.trim()) {
+      missing.push("Business Name");
+    }
     if (!form.marketing.howHeard) missing.push('"How did you hear about us?"');
     if (!form.identification.frontImage) missing.push("ID Front photo");
     if (!form.identification.backImage) missing.push("ID Back photo");
@@ -502,6 +506,16 @@ export default function IntakeForm() {
                 placeholder="— Select type —"
               />
             </Field>
+            {form.customer.contractType === "Business" && (
+              <Field label="Business Name" required>
+                <input
+                  className="input-base"
+                  placeholder="e.g. Acme Corp"
+                  value={form.customer.businessName}
+                  onChange={(e) => set("customer.businessName", e.target.value)}
+                />
+              </Field>
+            )}
             <div className="flex gap-4 flex-wrap">
               <Field label="First Name" required half>
                 <input

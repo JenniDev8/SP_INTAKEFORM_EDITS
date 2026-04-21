@@ -43,6 +43,19 @@ var LOCATION_TO_TAB = {
   "jamaica":          "LIB",
 };
 
+// Email recipients per location. Every listed address gets a notification
+// when a new intake form is submitted for that location. Add/remove as needed.
+var LOCATION_TO_EMAILS = {
+  "long island city": ["storageplus@nystorage.com", "romc@nystorage.com"],
+  "greenpoint":       ["greenpoint@nystorage.com", "romc@nystorage.com"],
+  "williamsburg":     ["nyc@nystorage.com",        "inari@nystorage.com"],
+  "jamaica":          ["liberty@nystorage.com",    "roman@nystorage.com"],
+};
+
+// Optional fallback — anyone here is always CC'd on every submission,
+// regardless of location. Leave as [] to disable.
+var ALWAYS_NOTIFY = [];
+
 // ── ADMIN / TOKEN CONFIG ──────────────────────────────────────────────────────
 // Allowed admin emails (work accounts only).
 // LEAVE EMPTY [] to allow any signed-in Google user (NOT recommended).
@@ -76,6 +89,7 @@ var COLUMNS = [
   "Timestamp",
   "Location",
   "Account Type",
+  "Business Name",
   "First Name",
   "Last Name",
   "Mailing Address",
@@ -159,8 +173,9 @@ function doPost(e) {
 
     // Generate a clean printable PDF summary of the full intake form
     var intakePdfLink = "";
+    var intakePdfFileId = "";
     try {
-      intakePdfLink = generateIntakePdf(
+      var pdfResult = generateIntakePdf(
         submissionFolder,
         data,
         nameSuffix,
@@ -168,6 +183,10 @@ function doPost(e) {
         idBackBlob,
         signatureBlob
       );
+      if (pdfResult) {
+        intakePdfLink = pdfResult.url || "";
+        intakePdfFileId = pdfResult.fileId || "";
+      }
     } catch (pdfErr) {
       Logger.log("PDF generation error: " + pdfErr.toString());
       Logger.log("Stack: " + (pdfErr.stack || "(no stack)"));
@@ -183,6 +202,7 @@ function doPost(e) {
       data.timestamp || new Date().toISOString(),
       data.location || "",
       data.contractType || "",
+      data.businessName || "",
       data.firstName || "",
       data.lastName || "",
       data.mailingAddress || "",
@@ -213,6 +233,22 @@ function doPost(e) {
     if (data.token) {
       try { consumeToken(data.token, label); }
       catch (tErr) { Logger.log("consumeToken err: " + tErr.toString()); }
+    }
+
+    // Send notification email to the location team
+    try {
+      sendIntakeNotification({
+        location: data.location,
+        customerName: trim((data.firstName || "") + " " + (data.lastName || "")),
+        businessName: data.businessName,
+        folderUrl: submissionFolder.getUrl(),
+        pdfUrl: intakePdfLink,
+        pdfFileId: intakePdfFileId,
+        idFrontBlob: idFrontBlob,
+        idBackBlob: idBackBlob,
+      });
+    } catch (mailErr) {
+      Logger.log("Notification email failed: " + mailErr.toString());
     }
 
     return ContentService
@@ -280,6 +316,149 @@ function getFolderForLocation(location) {
     }
   }
   return DRIVE_FOLDER_ID;
+}
+
+// Return the list of email recipients for a given location (plus ALWAYS_NOTIFY).
+function getEmailsForLocation(location) {
+  var l = String(location || "").toLowerCase();
+  var matched = [];
+  if (l) {
+    var keys = Object.keys(LOCATION_TO_EMAILS).sort(function (a, b) { return b.length - a.length; });
+    for (var i = 0; i < keys.length; i++) {
+      if (l.indexOf(keys[i]) === 0) {
+        matched = LOCATION_TO_EMAILS[keys[i]] || [];
+        break;
+      }
+    }
+  }
+  var combined = matched.concat(ALWAYS_NOTIFY || []);
+  // De-duplicate, filter blanks
+  var seen = {};
+  var out = [];
+  for (var j = 0; j < combined.length; j++) {
+    var addr = String(combined[j] || "").trim().toLowerCase();
+    if (addr && !seen[addr]) { seen[addr] = true; out.push(combined[j]); }
+  }
+  return out;
+}
+
+// Send the per-location notification email.
+function sendIntakeNotification(info) {
+  info = info || {};
+  var recipients = getEmailsForLocation(info.location);
+  if (!recipients || recipients.length === 0) {
+    Logger.log("No email recipients configured for location: " + info.location);
+    return;
+  }
+
+  var name = trim(info.customerName) || "(name not provided)";
+  var business = trim(info.businessName || "");
+  var locationLabel = trim(info.location || "");
+  var subject = "New Intake Form Submitted – " + name +
+                (locationLabel ? " (" + locationLabel + ")" : "");
+
+  // Collect attachments (IDs + PDF)
+  var attachments = [];
+  try {
+    if (info.idFrontBlob) attachments.push(info.idFrontBlob.copyBlob().setName("ID_Front_" + name + ".jpg"));
+    if (info.idBackBlob)  attachments.push(info.idBackBlob.copyBlob().setName("ID_Back_"  + name + ".jpg"));
+    if (info.pdfFileId) {
+      var pdfBlob = DriveApp.getFileById(info.pdfFileId).getBlob();
+      attachments.push(pdfBlob);
+    }
+  } catch (attErr) {
+    Logger.log("Attachment error: " + attErr.toString());
+  }
+
+  // Plain-text fallback
+  var plainLines = [
+    "Hello,",
+    "",
+    "A new intake form has been submitted by: " + name,
+  ];
+  if (business) plainLines.push("Business: " + business);
+  if (locationLabel) plainLines.push("Location: " + locationLabel);
+  plainLines.push("");
+  plainLines.push("The ID photos and the intake PDF are attached to this email.");
+  plainLines.push("");
+  plainLines.push("You can also view everything in Drive here:");
+  plainLines.push(info.folderUrl || "(folder link unavailable)");
+  if (info.pdfUrl) {
+    plainLines.push("");
+    plainLines.push("Intake PDF: " + info.pdfUrl);
+  }
+  plainLines.push("");
+  plainLines.push("— Storage Plus Intake System");
+
+  // HTML body — matches the form's navy/red branding
+  var brand = "#152C73";
+  var accent = "#B22222";
+  var softBg = "#F5F7FB";
+  var border = "#E2E6EF";
+  var textMuted = "#5B6270";
+
+  var rowsHtml = "" +
+    row("Customer", escapeHtml(name)) +
+    (business ? row("Business", escapeHtml(business)) : "") +
+    (locationLabel ? row("Location", escapeHtml(locationLabel)) : "") +
+    row("Submitted", escapeHtml(formatNiceDate(new Date().toISOString())));
+
+  var attachmentsNote = "The <strong>ID photos</strong> and the <strong>intake PDF</strong> are attached to this email.";
+
+  var html =
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:600px;margin:0 auto;">' +
+      '<div style="background:' + brand + ';color:#fff;padding:18px 20px;border-radius:8px 8px 0 0;">' +
+        '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;opacity:.8;">Storage Plus</div>' +
+        '<div style="font-size:20px;font-weight:bold;margin-top:2px;">New Intake Form Submitted</div>' +
+      '</div>' +
+      '<div style="border:1px solid ' + border + ';border-top:none;padding:20px;border-radius:0 0 8px 8px;background:#fff;">' +
+        '<p style="margin:0 0 12px 0;">Hello,</p>' +
+        '<p style="margin:0 0 16px 0;">A new intake form has just been submitted.</p>' +
+        '<table role="presentation" style="width:100%;border-collapse:collapse;background:' + softBg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:18px;">' +
+          rowsHtml +
+        '</table>' +
+        '<p style="margin:0 0 16px 0;">' + attachmentsNote + '</p>' +
+        '<div style="margin:18px 0;">' +
+          (info.folderUrl
+            ? '<a href="' + info.folderUrl + '" style="display:inline-block;background:' + brand + ';color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;margin-right:8px;">Open Drive Folder</a>'
+            : '') +
+          (info.pdfUrl
+            ? '<a href="' + info.pdfUrl + '" style="display:inline-block;background:' + accent + ';color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">View Intake PDF</a>'
+            : '') +
+        '</div>' +
+        '<p style="margin:18px 0 0 0;font-size:12px;color:' + textMuted + ';">This is an automated message from the Storage Plus Intake System.</p>' +
+      '</div>' +
+    '</div>';
+
+  function row(label, value) {
+    return '<tr>' +
+      '<td style="padding:8px 12px;border-bottom:1px solid ' + border + ';color:' + textMuted + ';width:120px;font-size:13px;">' + label + '</td>' +
+      '<td style="padding:8px 12px;border-bottom:1px solid ' + border + ';font-size:14px;"><strong>' + value + '</strong></td>' +
+    '</tr>';
+  }
+
+  var mailOpts = {
+    to: recipients.join(","),
+    subject: subject,
+    body: plainLines.join("\n"),
+    htmlBody: html,
+    name: "Storage Plus Intake",
+  };
+  if (attachments.length > 0) mailOpts.attachments = attachments;
+
+  MailApp.sendEmail(mailOpts);
+
+  Logger.log("Notification sent to: " + recipients.join(", ") +
+             " | attachments: " + attachments.length);
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // ── BASE64 HELPER ─────────────────────────────────────────────────────────────
@@ -358,327 +537,6 @@ function formatDate(d) {
     String(d.getMinutes()).padStart(2, "0");
 }
 
-// ── INTAKE FORM PDF GENERATOR ─────────────────────────────────────────────────
-// Builds a compact, printable Google Doc with ALL intake data + embedded ID
-// photos and signature, then exports it as a PDF into the submission folder.
-
-var BRAND_COLOR = "#152C73";
-var BRAND_LIGHT = "#EEF1F8";
-var TEXT_COLOR = "#1F2937";
-var MUTED_COLOR = "#6B7280";
-var LINE_COLOR = "#D0D4DC";
-var LOGO_URL = "https://nystorage.com/wp-content/uploads/2023/05/Storage-Plus-New-Color-logo.png";
-
-function getLogoBlob() {
-  try {
-    var resp = UrlFetchApp.fetch(LOGO_URL, { muteHttpExceptions: true });
-    if (resp.getResponseCode() !== 200) return null;
-    return resp.getBlob();
-  } catch (e) {
-    Logger.log("Failed to fetch logo: " + e.toString());
-    return null;
-  }
-}
-
-function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, signatureBlob) {
-  var tempName = "Intake_" + nameSuffix + "_TEMP_" + new Date().getTime();
-  var doc = DocumentApp.create(tempName);
-  var body = doc.getBody();
-  body.setMarginTop(28).setMarginBottom(28).setMarginLeft(40).setMarginRight(40);
-
-  // ── Header: logo (fallback to text if fetch fails) ──
-  var logoBlob = getLogoBlob();
-  if (logoBlob) {
-    try {
-      var logoImg = body.appendImage(logoBlob);
-      var origW = logoImg.getWidth();
-      var origH = logoImg.getHeight();
-      var targetW = 170;
-      logoImg.setWidth(targetW);
-      if (origW > 0) logoImg.setHeight(Math.round(origH * (targetW / origW)));
-    } catch (e) {
-      var fallback = body.appendParagraph("STORAGE PLUS");
-      styleText(fallback, { size: 18, bold: true, color: BRAND_COLOR });
-    }
-  } else {
-    var fallback2 = body.appendParagraph("STORAGE PLUS");
-    styleText(fallback2, { size: 18, bold: true, color: BRAND_COLOR });
-  }
-
-  // Meta line
-  var metaPara = body.appendParagraph("");
-  var metaText = metaPara.editAsText();
-  metaText.appendText("Location: ");
-  metaText.appendText(safe(data.location));
-  metaText.appendText("     Submitted: ");
-  metaText.appendText(formatNiceDate(data.timestamp));
-  styleText(metaPara, { size: 9, color: MUTED_COLOR });
-  try { metaPara.setSpacingBefore(4).setSpacingAfter(8); } catch (e) {}
-
-  // ── Customer Information ──
-  sectionHeader(body, "Customer Information");
-  kvTable(body, [
-    ["Account Type", safe(data.contractType), "", ""],
-    ["First Name",   safe(data.firstName),    "Last Name", safe(data.lastName)],
-  ]);
-
-  // ── Mailing Address ──
-  sectionHeader(body, "Mailing Address");
-  var zipLine = safe(data.zip) + (data.zipPlusFour ? "-" + data.zipPlusFour : "");
-  kvTable(body, [
-    ["Street", safe(data.mailingAddress), "City", safe(data.city)],
-    ["State",  safe(data.state),          "ZIP",  zipLine],
-  ]);
-
-  // ── Contact Info: phone & email side by side ──
-  sectionHeader(body, "Contact Information");
-  var phonesText = formatPhones(data.phones) || "—";
-  var emailsText = formatEmails(data.emails) || "—";
-  kvTable(body, [
-    ["Phone(s)", phonesText, "Email(s)", emailsText],
-  ]);
-
-  // ── Additional Access ──
-  sectionHeader(body, "Additional Access Authorization");
-  var accessPeople = [];
-  try { accessPeople = JSON.parse(data.additionalAccess || "[]"); } catch (e) {}
-  accessPeople = accessPeople.filter(function (p) { return p.name || p.phone; });
-  if (accessPeople.length === 0) {
-    var none = body.appendParagraph("None provided");
-    styleText(none, { size: 9, color: MUTED_COLOR, italic: true });
-    try { none.setSpacingBefore(2).setSpacingAfter(4); } catch (e) {}
-  } else {
-    var accessRows = [["Name", "Phone"]];
-    accessPeople.forEach(function (p) {
-      accessRows.push([safe(p.name), safe(p.phone)]);
-    });
-    dataTable(body, accessRows, true);
-  }
-
-  // ── Marketing ──
-  sectionHeader(body, "Marketing Information");
-  var mkt = [["How did you hear about us?", safe(data.howHeard)]];
-  if (data.reasonForStoring) mkt.push(["Reason for storing", data.reasonForStoring]);
-  if (data.whyChose)         mkt.push(["What made you choose us", data.whyChose]);
-  if (data.whatStored)       mkt.push(["What is being stored", data.whatStored]);
-  dataTable(body, mkt, false);
-
-  // ── Payment & Rental Details ──
-  sectionHeader(body, "Payment & Rental Details");
-  kvTable(body, [
-    ["Payment Method",     safe(data.paymentMethod),     "Autopay", safe(data.autopay)],
-    ["Storage Start Date", safe(data.storageStartDate), "", ""],
-  ]);
-
-  // ── Identification (starts on page 2 so the IDs aren't split across pages) ──
-  body.appendPageBreak();
-  sectionHeader(body, "Identification");
-
-  var idTable = body.appendTable([["", ""]]);
-  clearTableBorders(idTable);
-  var idRow = idTable.getRow(0);
-  fillIdCell(idRow.getCell(0), "ID — Front", idFrontBlob);
-  fillIdCell(idRow.getCell(1), "ID — Back",  idBackBlob);
-
-  // ── Signature ──
-  sectionHeader(body, "Signature");
-  if (signatureBlob) {
-    try {
-      var sigImg = body.appendImage(signatureBlob);
-      sigImg.setWidth(280);
-      var ratio = sigImg.getHeight() / sigImg.getWidth();
-      if (ratio > 0.3) sigImg.setHeight(Math.round(280 * 0.25));
-    } catch (e) {
-      var sErr = body.appendParagraph("(signature render error)");
-      styleText(sErr, { size: 9, color: MUTED_COLOR, italic: true });
-    }
-  } else {
-    var noSig = body.appendParagraph("(No signature captured)");
-    styleText(noSig, { size: 9, color: MUTED_COLOR, italic: true });
-  }
-
-  var sigCaption = body.appendParagraph(
-    "Signed by " + safe(data.firstName) + " " + safe(data.lastName) +
-    "  ·  " + formatNiceDate(data.timestamp)
-  );
-  styleText(sigCaption, { size: 9, color: MUTED_COLOR });
-  try { sigCaption.setSpacingBefore(2); } catch (e) {}
-
-  // footer
-  var footer = body.appendParagraph(
-    "This is an intake summary only. It is not a rental contract. " +
-    "The rental agreement is signed separately at the facility."
-  );
-  styleText(footer, { size: 8, color: MUTED_COLOR, italic: true });
-  try { footer.setSpacingBefore(8); } catch (e) {}
-
-  doc.saveAndClose();
-
-  // Convert the temp Doc to PDF and save into the submission folder
-  var docFile = DriveApp.getFileById(doc.getId());
-  var pdfBlob = docFile.getAs("application/pdf").setName("Intake_Form_" + nameSuffix + ".pdf");
-  var pdfFile = folder.createFile(pdfBlob);
-  docFile.setTrashed(true); // remove the temp Doc
-
-  return pdfFile.getUrl();
-}
-
-// ── DOC LAYOUT HELPERS ────────────────────────────────────────────────────────
-
-function sectionHeader(body, label) {
-  // Full-width single-cell table with a light background = colored section bar
-  try {
-    var t = body.appendTable([[label.toUpperCase()]]);
-    t.setBorderWidth(0);
-    var cell = t.getCell(0, 0);
-    try { cell.setBackgroundColor(BRAND_LIGHT); } catch (e) {}
-    try {
-      cell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(6).setPaddingRight(6);
-    } catch (e) {}
-    var para = cell.getChild(0).asParagraph();
-    styleText(para, { size: 9, bold: true, color: BRAND_COLOR });
-  } catch (err) {
-    // Fallback: plain bold colored paragraph if the table approach fails
-    var p = body.appendParagraph(label.toUpperCase());
-    styleText(p, { size: 10, bold: true, color: BRAND_COLOR });
-    p.setSpacingBefore(6).setSpacingAfter(2);
-  }
-}
-
-function kvTable(body, rows) {
-  // rows: array of [label, value, label, value]
-  // Empty pairs (both label & value blank) render as truly empty cells.
-  // Empty values w/ a real label still render "—" for clarity.
-  var tableRows = rows.map(function (r) {
-    var l1 = r[0] || "", v1 = r[1] || "", l2 = r[2] || "", v2 = r[3] || "";
-    var emptyPair = !l2 && !v2;
-    return [l1, kvDisplayValue(l1, v1), emptyPair ? "" : l2, emptyPair ? "" : kvDisplayValue(l2, v2)];
-  });
-
-  var table = body.appendTable(tableRows);
-  clearTableBorders(table);
-
-  // Set column widths so long values (emails, addresses, phone blocks) don't
-  // wrap awkwardly. Page content width ≈ 532pt; labels are narrow, values wide.
-  try {
-    table.setColumnWidth(0, 80);   // label 1
-    table.setColumnWidth(1, 186);  // value 1
-    table.setColumnWidth(2, 80);   // label 2
-    table.setColumnWidth(3, 186);  // value 2
-  } catch (e) {}
-
-  for (var r = 0; r < tableRows.length; r++) {
-    var row = table.getRow(r);
-    try {
-      styleCellText(row.getCell(0), { size: 8, bold: true, color: MUTED_COLOR });
-      styleCellText(row.getCell(1), { size: 10, bold: true, color: TEXT_COLOR });
-      styleCellText(row.getCell(2), { size: 8, bold: true, color: MUTED_COLOR });
-      styleCellText(row.getCell(3), { size: 10, bold: true, color: TEXT_COLOR });
-    } catch (e) {}
-    for (var c = 0; c < 4; c++) {
-      try {
-        row.getCell(c).setPaddingTop(2).setPaddingBottom(2)
-          .setPaddingLeft(4).setPaddingRight(4);
-      } catch (e) {}
-    }
-  }
-}
-
-function kvDisplayValue(label, value) {
-  // If we have a label but no value, show "—". If neither, show blank.
-  if (!label && !value) return "";
-  if (value == null || value === "") return "—";
-  return String(value);
-}
-
-function styleCellText(cell, style) {
-  try {
-    var para = cell.getChild(0).asParagraph();
-    styleText(para, style || {});
-  } catch (e) {}
-}
-
-function dataTable(body, rows, firstRowIsHeader) {
-  var normalized = rows.map(function (r) {
-    return [r[0] == null || r[0] === "" ? "—" : String(r[0]),
-            r[1] == null || r[1] === "" ? "—" : String(r[1])];
-  });
-  var table = body.appendTable(normalized);
-  try { table.setBorderWidth(0.5).setBorderColor(LINE_COLOR); } catch (e) {}
-  try {
-    table.setColumnWidth(0, 200);
-    table.setColumnWidth(1, 332);
-  } catch (e) {}
-
-  for (var r = 0; r < normalized.length; r++) {
-    var row = table.getRow(r);
-    var isHead = (firstRowIsHeader && r === 0);
-    try {
-      row.getCell(0).setPaddingTop(3).setPaddingBottom(3)
-        .setPaddingLeft(6).setPaddingRight(6);
-      row.getCell(1).setPaddingTop(3).setPaddingBottom(3)
-        .setPaddingLeft(6).setPaddingRight(6);
-    } catch (e) {}
-    if (isHead) {
-      try {
-        row.getCell(0).setBackgroundColor(BRAND_LIGHT);
-        row.getCell(1).setBackgroundColor(BRAND_LIGHT);
-      } catch (e) {}
-      styleCellText(row.getCell(0), { size: 8, bold: true, color: BRAND_COLOR });
-      styleCellText(row.getCell(1), { size: 8, bold: true, color: BRAND_COLOR });
-    } else {
-      styleCellText(row.getCell(0), { size: 9, color: MUTED_COLOR });
-      styleCellText(row.getCell(1), { size: 10, color: TEXT_COLOR, bold: true });
-    }
-  }
-}
-
-function fillIdCell(cell, label, blob) {
-  try { cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(4).setPaddingRight(4); } catch (e) {}
-  try {
-    var para = cell.getChild(0).asParagraph();
-    para.setText(label);
-    styleText(para, { size: 9, bold: true, color: BRAND_COLOR });
-  } catch (e) {}
-  if (blob) {
-    try {
-      var img = cell.appendImage(blob);
-      var w = 220;
-      img.setWidth(w);
-      var ratio = img.getHeight() / img.getWidth();
-      var targetH = Math.min(Math.round(w * ratio), 150);
-      img.setHeight(targetH);
-    } catch (err) {
-      try {
-        cell.appendParagraph("(image error)").editAsText().setFontSize(8).setForegroundColor(MUTED_COLOR);
-      } catch (e) {}
-    }
-  } else {
-    try {
-      cell.appendParagraph("(not provided)").editAsText().setFontSize(8).setForegroundColor(MUTED_COLOR);
-    } catch (e) {}
-  }
-}
-
-function setCellText(cell, text, style) {
-  var content = text == null || text === "" ? "—" : String(text);
-  var para = cell.getChild(0).asParagraph();
-  para.setText(content);
-  styleText(para, style || {});
-}
-
-function styleText(paragraphOrText, opts) {
-  var t = paragraphOrText.editAsText ? paragraphOrText.editAsText() : paragraphOrText;
-  if (opts.size != null) t.setFontSize(opts.size);
-  if (opts.bold != null) t.setBold(opts.bold);
-  if (opts.italic != null) t.setItalic(opts.italic);
-  if (opts.color) t.setForegroundColor(opts.color);
-}
-
-function clearTableBorders(table) {
-  table.setBorderWidth(0);
-}
-
 function safe(v) {
   if (v === undefined || v === null || v === "") return "—";
   return String(v);
@@ -696,6 +554,507 @@ function formatNiceDate(iso) {
   } catch (e) {
     return String(iso);
   }
+}
+
+// ── INTAKE FORM PDF GENERATOR ─────────────────────────────────────────────────
+// Produces a clean, branded, print-ready PDF intake summary.
+// Layout: Google Doc → export as PDF → save to Drive submission folder.
+//
+// COLOR STRATEGY (ink-friendly):
+//   • Header:          #EEF1F8 tint bg + thin navy top/bottom stripes
+//   • Section bars:    #EEF1F8 tint bg + navy bold text + 4pt navy left stripe
+//   • Table headers:   #EEF1F8 tint bg + navy bold text
+//   • Alternating rows: #F9FAFB (barely-there gray)
+//   • No full navy fills anywhere on the page body
+
+var BRAND_NAVY   = "#152C73";   // Storage Plus navy — used for TEXT only
+var BRAND_LIGHT  = "#EEF1F8";   // soft blue-gray tint — section bars & header bg
+var BRAND_WHITE  = "#FFFFFF";
+var TEXT_DARK    = "#1F2937";
+var TEXT_MUTED   = "#6B7280";
+var TEXT_LABEL   = "#374151";
+var RULE_COLOR   = "#D1D5DB";
+var ROW_ALT      = "#F9FAFB";   // alternating row tint (near-white)
+
+var LOGO_URL = "https://nystorage.com/wp-content/uploads/2023/05/Storage-Plus-New-Color-logo.png";
+
+function getLogoBlob() {
+  try {
+    var resp = UrlFetchApp.fetch(LOGO_URL, { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) return null;
+    return resp.getBlob();
+  } catch (e) {
+    Logger.log("Logo fetch failed: " + e);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN ENTRY POINT
+// ─────────────────────────────────────────────────────────────────────────────
+function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, signatureBlob) {
+
+  var tempName = "Intake_" + nameSuffix + "_TEMP_" + new Date().getTime();
+  var doc  = DocumentApp.create(tempName);
+  var body = doc.getBody();
+
+  // Page setup — US Letter, tighter margins for more usable content area
+  body.setPageWidth(612).setPageHeight(792);
+  body.setMarginTop(36).setMarginBottom(36).setMarginLeft(45).setMarginRight(45);
+
+  var PW = 522; // usable page width (612 - 45 - 45)
+
+  // ── 1. PAGE HEADER ────────────────────────────────────────────────────────
+  // Light tint banner: logo left | title + meta right
+  // Thin navy stripes above & below simulate a border without flooding the
+  // area with heavy navy fill (saves toner).
+
+  // Top accent stripe
+  var stripeTbl = body.appendTable([[""]]);
+  stripeTbl.setBorderWidth(0);
+  try { stripeTbl.setColumnWidth(0, PW); } catch(e) {}
+  var stripeCell = stripeTbl.getCell(0, 0);
+  try { stripeCell.setBackgroundColor(BRAND_NAVY); } catch(e) {}
+  try { stripeCell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
+  stripeCell.getChild(0).asParagraph().editAsText().setFontSize(1).setForegroundColor(BRAND_NAVY);
+
+  // Main header row — light tint background, two columns
+  var headerTbl = body.appendTable([["", ""]]);
+  headerTbl.setBorderWidth(0);
+  var LW = Math.round(PW * 0.56);
+  var RW = PW - LW;
+  try { headerTbl.setColumnWidth(0, LW); headerTbl.setColumnWidth(1, RW); } catch(e) {}
+
+  var leftCell  = headerTbl.getCell(0, 0);
+  var rightCell = headerTbl.getCell(0, 1);
+  [leftCell, rightCell].forEach(function(c) {
+    try { c.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
+    try { c.setPaddingTop(10).setPaddingBottom(10).setPaddingLeft(12).setPaddingRight(12); } catch(e) {}
+  });
+
+  // Logo in left cell
+  var logoBlob = getLogoBlob();
+  if (logoBlob) {
+    try {
+      var lp = leftCell.getChild(0).asParagraph();
+      lp.setText("");
+      var logoImg = lp.appendInlineImage(logoBlob);
+      var origW = logoImg.getWidth(), origH = logoImg.getHeight();
+      var tw = 155;
+      logoImg.setWidth(tw);
+      if (origW > 0) logoImg.setHeight(Math.round(origH * (tw / origW)));
+    } catch(e) {
+      setParaStyle(leftCell.getChild(0).asParagraph(), "STORAGE PLUS",
+        { size: 15, bold: true, color: BRAND_NAVY });
+    }
+  } else {
+    setParaStyle(leftCell.getChild(0).asParagraph(), "STORAGE PLUS",
+      { size: 15, bold: true, color: BRAND_NAVY });
+  }
+
+  // Title + date/location in right cell — right-aligned, navy text on tint
+  var rp = rightCell.getChild(0).asParagraph();
+  rp.setText("INTAKE FORM SUMMARY");
+  rp.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  rp.editAsText().setFontSize(12).setBold(true).setForegroundColor(BRAND_NAVY);
+
+  var sub = rightCell.appendParagraph(formatNiceDate(data.timestamp));
+  sub.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  sub.editAsText().setFontSize(8).setBold(false).setForegroundColor(TEXT_MUTED);
+
+  var locLine = rightCell.appendParagraph(safe(data.location));
+  locLine.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  locLine.editAsText().setFontSize(8).setBold(false).setForegroundColor(TEXT_MUTED);
+
+  // Bottom accent stripe to close the header
+  var stripeBotTbl = body.appendTable([[""]]);
+  stripeBotTbl.setBorderWidth(0);
+  try { stripeBotTbl.setColumnWidth(0, PW); } catch(e) {}
+  var stripeBotCell = stripeBotTbl.getCell(0, 0);
+  try { stripeBotCell.setBackgroundColor(BRAND_NAVY); } catch(e) {}
+  try { stripeBotCell.setPaddingTop(2).setPaddingBottom(2).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
+  stripeBotCell.getChild(0).asParagraph().editAsText().setFontSize(1).setForegroundColor(BRAND_NAVY);
+
+  spacer(body, 8);
+
+  // ── 2. CUSTOMER INFORMATION ───────────────────────────────────────────────
+  sectionBar(body, "CUSTOMER INFORMATION", PW);
+
+  var isBusinessStr = String(data.contractType || "").toLowerCase();
+  var isBusiness    = (isBusinessStr === "business");
+
+  kvGrid(body, PW, [
+    { label: "Account Type",  value: safe(data.contractType) },
+    { label: "Business Name", value: isBusiness ? safe(data.businessName) : "" },
+  ]);
+  kvGrid(body, PW, [
+    { label: "First Name", value: safe(data.firstName) },
+    { label: "Last Name",  value: safe(data.lastName)  },
+  ]);
+
+  spacer(body, 6);
+
+  // ── 3. MAILING ADDRESS ────────────────────────────────────────────────────
+  sectionBar(body, "MAILING ADDRESS", PW);
+
+  kvGrid(body, PW, [
+    { label: "Street Address", value: safe(data.mailingAddress) },
+    { label: "City",           value: safe(data.city)           },
+  ]);
+  kvGrid(body, PW, [
+    { label: "State", value: safe(data.state) },
+    { label: "ZIP",   value: safe(data.zip) + (data.zipPlusFour ? "-" + data.zipPlusFour : "") },
+  ]);
+
+  spacer(body, 6);
+
+  // ── 4. CONTACT INFORMATION ────────────────────────────────────────────────
+  sectionBar(body, "CONTACT INFORMATION", PW);
+
+  var phonesText = formatPhones(data.phones) || "—";
+  var emailsText = formatEmails(data.emails) || "—";
+
+  kvGrid(body, PW, [
+    { label: "Phone Number(s)",   value: phonesText },
+    { label: "Email Address(es)", value: emailsText },
+  ]);
+
+  spacer(body, 6);
+
+  // ── 5. ADDITIONAL ACCESS ──────────────────────────────────────────────────
+  sectionBar(body, "ADDITIONAL ACCESS AUTHORIZATION", PW);
+
+  var accessPeople = [];
+  try { accessPeople = JSON.parse(data.additionalAccess || "[]"); } catch(e) {}
+  accessPeople = accessPeople.filter(function(p) { return p.name || p.phone; });
+
+  if (accessPeople.length === 0) {
+    var noneP = body.appendParagraph("None provided");
+    noneP.editAsText().setFontSize(9).setItalic(true).setForegroundColor(TEXT_MUTED);
+    try { noneP.setSpacingBefore(3).setSpacingAfter(3); } catch(e) {}
+  } else {
+    var accessData = [["Name", "Phone Number"]];
+    accessPeople.forEach(function(p) {
+      accessData.push([safe(p.name), safe(p.phone)]);
+    });
+    styledDataTable(body, PW, accessData, true);
+  }
+
+  spacer(body, 6);
+
+  // ── 6. STORAGE & PAYMENT DETAILS ──────────────────────────────────────────
+  sectionBar(body, "STORAGE & PAYMENT DETAILS", PW);
+
+  kvGrid(body, PW, [
+    { label: "Storage Start Date", value: safe(data.storageStartDate) },
+    { label: "Payment Method",     value: safe(data.paymentMethod)    },
+  ]);
+  kvGrid(body, PW, [
+    { label: "Enrolled in Autopay", value: safe(data.autopay) },
+    { label: "",                    value: ""                 },
+  ]);
+
+  spacer(body, 6);
+
+  // ── 7. MARKETING INFORMATION ──────────────────────────────────────────────
+  sectionBar(body, "MARKETING & STORAGE INFORMATION", PW);
+
+  var mktRows = [["How did you hear about us?", safe(data.howHeard)]];
+  if (data.reasonForStoring) mktRows.push(["Reason for storing",   safe(data.reasonForStoring)]);
+  if (data.whyChose)         mktRows.push(["Why they chose us",    safe(data.whyChose)]);
+  if (data.whatStored)       mktRows.push(["What is being stored", safe(data.whatStored)]);
+  styledDataTable(body, PW, mktRows, false);
+
+  spacer(body, 6);
+
+  // ── PAGE BREAK before IDs + signature ─────────────────────────────────────
+  body.appendPageBreak();
+
+  // ── 8. IDENTIFICATION DOCUMENTS ───────────────────────────────────────────
+  sectionBar(body, "IDENTIFICATION DOCUMENTS", PW);
+  spacer(body, 4);
+
+  var idTbl = body.appendTable([["", ""]]);
+  idTbl.setBorderWidth(0);
+  var halfW = Math.floor(PW / 2) - 6;
+  try { idTbl.setColumnWidth(0, halfW); idTbl.setColumnWidth(1, halfW); } catch(e) {}
+
+  buildIdCell(idTbl.getCell(0, 0), "ID — Front", idFrontBlob);
+  buildIdCell(idTbl.getCell(0, 1), "ID — Back",  idBackBlob);
+
+  spacer(body, 10);
+
+  // ── 9. SIGNATURE ──────────────────────────────────────────────────────────
+  sectionBar(body, "CUSTOMER SIGNATURE", PW);
+  spacer(body, 6);
+
+  if (signatureBlob) {
+    try {
+      var sigP = body.appendParagraph("");
+      var sigImg = sigP.appendInlineImage(signatureBlob);
+      var sigW = 300;
+      sigImg.setWidth(sigW);
+      var ratio = sigImg.getHeight() / Math.max(sigImg.getWidth(), 1);
+      sigImg.setHeight(Math.min(Math.round(sigW * ratio), 120));
+    } catch(e) {
+      var errP = body.appendParagraph("(signature rendering error)");
+      errP.editAsText().setFontSize(9).setItalic(true).setForegroundColor(TEXT_MUTED);
+    }
+  } else {
+    var noSigP = body.appendParagraph("No signature captured");
+    noSigP.editAsText().setFontSize(9).setItalic(true).setForegroundColor(TEXT_MUTED);
+  }
+
+  var sigCaption = body.appendParagraph(
+    "Signed by:  " + safe(data.firstName) + " " + safe(data.lastName) +
+    "     |     Date: " + formatNiceDate(data.timestamp)
+  );
+  try { sigCaption.setSpacingBefore(6); } catch(e) {}
+  sigCaption.editAsText().setFontSize(9).setForegroundColor(TEXT_DARK);
+
+  spacer(body, 20);
+  var sigLine = body.appendParagraph("_____________________________________________      Date: _______________");
+  sigLine.editAsText().setFontSize(10).setForegroundColor(TEXT_DARK);
+
+  var sigNameLabel = body.appendParagraph("Tenant Signature");
+  sigNameLabel.editAsText().setFontSize(8).setForegroundColor(TEXT_MUTED);
+  try { sigNameLabel.setSpacingBefore(2); } catch(e) {}
+
+  spacer(body, 16);
+
+  // ── 10. FOOTER DISCLAIMER ─────────────────────────────────────────────────
+  var footerTbl = body.appendTable([[""]]);
+  footerTbl.setBorderWidth(0);
+  try { footerTbl.setColumnWidth(0, PW); } catch(e) {}
+  var fc = footerTbl.getCell(0, 0);
+  try { fc.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
+  try { fc.setPaddingTop(6).setPaddingBottom(6).setPaddingLeft(10).setPaddingRight(10); } catch(e) {}
+  var fp = fc.getChild(0).asParagraph();
+  fp.setText(
+    "DISCLAIMER:  This document is an intake summary only and does not constitute a rental agreement or contract. " +
+    "The official rental agreement is signed separately at the facility. " +
+    "Storage Plus | nystorage.com"
+  );
+  fp.editAsText().setFontSize(7.5).setForegroundColor(TEXT_MUTED).setItalic(true);
+
+  // ── EXPORT ────────────────────────────────────────────────────────────────
+  doc.saveAndClose();
+
+  var docFile = DriveApp.getFileById(doc.getId());
+  var pdfBlob = docFile.getAs("application/pdf").setName("Intake_Form_" + nameSuffix + ".pdf");
+  var pdfFile = folder.createFile(pdfBlob);
+  docFile.setTrashed(true);
+
+  return { url: pdfFile.getUrl(), fileId: pdfFile.getId() };
+}
+
+
+// =============================================================================
+// ── DOC LAYOUT HELPERS ────────────────────────────────────────────────────────
+// =============================================================================
+
+// Light tint section bar — navy bold text on #EEF1F8 background
+// A 4pt navy stripe on the left gives it a distinctive accent without
+// using heavy fill across the whole row (saves toner).
+function sectionBar(body, label, pageWidth) {
+  var STRIPE_W = 4;
+  var tbl = body.appendTable([["", label]]);
+  tbl.setBorderWidth(0);
+  try { tbl.setColumnWidth(0, STRIPE_W); tbl.setColumnWidth(1, pageWidth - STRIPE_W); } catch(e) {}
+
+  var stripeCell = tbl.getCell(0, 0);
+  try { stripeCell.setBackgroundColor(BRAND_NAVY); } catch(e) {}
+  try { stripeCell.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
+  stripeCell.getChild(0).asParagraph().editAsText().setFontSize(1).setForegroundColor(BRAND_NAVY);
+
+  var labelCell = tbl.getCell(0, 1);
+  try { labelCell.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
+  try { labelCell.setPaddingTop(5).setPaddingBottom(5).setPaddingLeft(10).setPaddingRight(10); } catch(e) {}
+  var p = labelCell.getChild(0).asParagraph();
+  p.setText(label);
+  p.editAsText().setFontSize(8).setBold(true).setForegroundColor(BRAND_NAVY);
+  try { p.setSpacingBefore(0).setSpacingAfter(0); } catch(e) {}
+}
+
+// Two-column key/value grid — each item is { label, value }
+function kvGrid(body, pageWidth, items) {
+  var LABEL_W = 95;
+  var VAL_W   = Math.floor(pageWidth / 2) - LABEL_W - 2;
+
+  var cols = [[
+    items[0] ? items[0].label : "",
+    items[0] ? kvVal(items[0].value) : "",
+    items[1] ? items[1].label : "",
+    items[1] ? kvVal(items[1].value) : "",
+  ]];
+
+  var tbl = body.appendTable(cols);
+  tbl.setBorderWidth(0);
+  try {
+    tbl.setColumnWidth(0, LABEL_W);
+    tbl.setColumnWidth(1, VAL_W);
+    tbl.setColumnWidth(2, LABEL_W);
+    tbl.setColumnWidth(3, VAL_W);
+  } catch(e) {}
+
+  var row = tbl.getRow(0);
+  for (var c = 0; c < 4; c++) {
+    try { row.getCell(c).setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(5).setPaddingRight(5); } catch(e) {}
+  }
+
+  [0, 2].forEach(function(ci) {
+    var p = row.getCell(ci).getChild(0).asParagraph();
+    p.editAsText().setFontSize(7.5).setBold(false).setForegroundColor(TEXT_MUTED);
+  });
+  [1, 3].forEach(function(ci) {
+    var p = row.getCell(ci).getChild(0).asParagraph();
+    p.editAsText().setFontSize(10).setBold(true).setForegroundColor(TEXT_DARK);
+  });
+}
+
+function kvVal(v) {
+  if (v === undefined || v === null || String(v).trim() === "" || v === "—") return "—";
+  return String(v);
+}
+
+// Two-column data table with optional header row
+function styledDataTable(body, pageWidth, rows, hasHeader) {
+  if (!rows || rows.length === 0) return;
+
+  var COL1_W = 185;
+  var COL2_W = pageWidth - COL1_W;
+
+  var tbl = body.appendTable(rows.map(function(r) {
+    return [
+      r[0] == null || r[0] === "" ? "—" : String(r[0]),
+      r[1] == null || r[1] === "" ? "—" : String(r[1]),
+    ];
+  }));
+
+  try { tbl.setBorderWidth(0.5).setBorderColor(RULE_COLOR); } catch(e) {}
+  try { tbl.setColumnWidth(0, COL1_W); tbl.setColumnWidth(1, COL2_W); } catch(e) {}
+
+  for (var r = 0; r < rows.length; r++) {
+    var row = tbl.getRow(r);
+    var isHead = hasHeader && r === 0;
+    var isAlt  = !isHead && (r % 2 === 0);
+
+    for (var c = 0; c < 2; c++) {
+      var cell = row.getCell(c);
+      try { cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(8).setPaddingRight(8); } catch(e) {}
+
+      if (isHead) {
+        try { cell.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
+        cell.getChild(0).asParagraph().editAsText()
+          .setFontSize(8).setBold(true).setForegroundColor(BRAND_NAVY);
+      } else if (isAlt) {
+        try { cell.setBackgroundColor(ROW_ALT); } catch(e) {}
+        styleDataCell(cell, c === 0);
+      } else {
+        styleDataCell(cell, c === 0);
+      }
+    }
+  }
+}
+
+function styleDataCell(cell, isLabel) {
+  var p = cell.getChild(0).asParagraph();
+  if (isLabel) {
+    p.editAsText().setFontSize(8.5).setBold(false).setForegroundColor(TEXT_LABEL);
+  } else {
+    p.editAsText().setFontSize(9.5).setBold(true).setForegroundColor(TEXT_DARK);
+  }
+}
+
+// Build one ID photo cell — light tint bg, label, image
+function buildIdCell(cell, label, blob) {
+  try { cell.setBackgroundColor(BRAND_LIGHT); } catch(e) {}
+  try { cell.setPaddingTop(6).setPaddingBottom(6).setPaddingLeft(6).setPaddingRight(6); } catch(e) {}
+
+  var lp = cell.getChild(0).asParagraph();
+  lp.setText(label.toUpperCase());
+  lp.editAsText().setFontSize(7.5).setBold(true).setForegroundColor(BRAND_NAVY);
+  try { lp.setSpacingAfter(4); } catch(e) {}
+
+  if (blob) {
+    try {
+      var ip = cell.appendParagraph("");
+      var img = ip.appendInlineImage(blob);
+      var maxW = 200, maxH = 130;
+      var origW = img.getWidth(), origH = img.getHeight();
+      var scale = Math.min(maxW / Math.max(origW, 1), maxH / Math.max(origH, 1), 1);
+      img.setWidth(Math.round(origW * scale));
+      img.setHeight(Math.round(origH * scale));
+    } catch(e) {
+      var ep = cell.appendParagraph("(image error)");
+      ep.editAsText().setFontSize(8).setItalic(true).setForegroundColor(TEXT_MUTED);
+    }
+  } else {
+    var np = cell.appendParagraph("Not provided");
+    np.editAsText().setFontSize(8).setItalic(true).setForegroundColor(TEXT_MUTED);
+  }
+}
+
+function spacer(body, pts) {
+  var p = body.appendParagraph("");
+  try { p.setSpacingBefore(0).setSpacingAfter(pts || 6); } catch(e) {}
+  p.editAsText().setFontSize(1);
+}
+
+function setParaStyle(para, text, opts) {
+  para.setText(text);
+  var t = para.editAsText();
+  if (opts.size)         t.setFontSize(opts.size);
+  if (opts.bold != null) t.setBold(opts.bold);
+  if (opts.color)        t.setForegroundColor(opts.color);
+  if (opts.italic != null) t.setItalic(opts.italic);
+}
+
+// ── PDF PREVIEW HELPER ────────────────────────────────────────────────────────
+// Run this directly from the Apps Script editor (select `previewIntakePdf`
+// from the function dropdown and press Run) to generate a sample PDF with
+// dummy data so you can iterate on styling without submitting the real form.
+// The resulting PDF link will be printed to the execution log.
+
+function previewIntakePdf() {
+  var folderId = (typeof DRIVE_FOLDER_ID !== "undefined" && DRIVE_FOLDER_ID) ? DRIVE_FOLDER_ID : null;
+  if (!folderId) {
+    Logger.log("Set DRIVE_FOLDER_ID at the top of Code.gs before running previewIntakePdf().");
+    return;
+  }
+  var parent = DriveApp.getFolderById(folderId);
+  var previewFolder = parent.createFolder("_PDF_PREVIEW_" + new Date().getTime());
+
+  var sampleData = {
+    timestamp: new Date().toISOString(),
+    location: "Greenpoint",
+    contractType: "Business",
+    businessName: "Acme Storage Co.",
+    firstName: "Jane",
+    lastName: "Doe",
+    mailingAddress: "123 Main St, Apt 4B",
+    city: "Brooklyn",
+    state: "NY",
+    zip: "11222",
+    zipPlusFour: "1234",
+    phones: JSON.stringify([{ number: "(555) 123-4567" }]),
+    emails: JSON.stringify([{ address: "jane@example.com" }]),
+    additionalAccess: JSON.stringify([
+      { name: "John Doe",  phone: "(555) 987-6543" },
+      { name: "Mary Smith", phone: "(555) 222-3333" },
+    ]),
+    howHeard: "Google Search",
+    reasonForStoring: "Moving to a new apartment",
+    whyChose: "Close to home",
+    whatStored: "Furniture, boxes, seasonal items",
+    paymentMethod: "Credit Card",
+    autopay: "Yes",
+    storageStartDate: "2026-05-01",
+  };
+
+  var result = generateIntakePdf(previewFolder, sampleData, "PREVIEW_Jane_Doe", null, null, null);
+  Logger.log("Preview PDF: " + result.url);
+  Logger.log("Temp folder: " + previewFolder.getUrl() + " (you can delete after review)");
 }
 
 // =============================================================================
