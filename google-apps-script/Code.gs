@@ -623,7 +623,7 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   var body = doc.getBody();
 
   body.setPageWidth(612).setPageHeight(792);
-  body.setMarginTop(45).setMarginBottom(45).setMarginLeft(54).setMarginRight(54);
+  body.setMarginTop(36).setMarginBottom(36).setMarginLeft(54).setMarginRight(54);
 
   var PW = 504; // 612 - 54 - 54
 
@@ -673,9 +673,9 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   locLine.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
   locLine.editAsText().setFontSize(8).setBold(false).setForegroundColor(TEXT_MUTED);
 
-  // Thin navy divider below header
+  // Thin divider below header
   navyRule(body, PW);
-  spacer(body, 10);
+  spacer(body, 6);
 
   // ── 2. CUSTOMER INFORMATION ───────────────────────────────────────────────
   sectionLabel(body, "Customer Information");
@@ -685,7 +685,7 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
                      "Business Name", isBusiness ? safe(data.businessName) : "—");
   fieldRow(body, PW, "First Name", safe(data.firstName),
                      "Last Name",  safe(data.lastName));
-  spacer(body, 10);
+  spacer(body, 4);
 
   // ── 3. MAILING ADDRESS ────────────────────────────────────────────────────
   sectionLabel(body, "Mailing Address");
@@ -694,7 +694,7 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
                      "City",           safe(data.city));
   fieldRow(body, PW, "State", safe(data.state),
                      "ZIP",   safe(data.zip) + (data.zipPlusFour ? "-" + data.zipPlusFour : ""));
-  spacer(body, 10);
+  spacer(body, 4);
 
   // ── 4. CONTACT INFORMATION ────────────────────────────────────────────────
   sectionLabel(body, "Contact Information");
@@ -702,7 +702,7 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   fieldRow(body, PW,
     "Phone Number(s)",   formatPhones(data.phones) || "—",
     "Email Address(es)", formatEmails(data.emails) || "—");
-  spacer(body, 10);
+  spacer(body, 4);
 
   // ── 5. ACCESS AUTHORIZATION ───────────────────────────────────────────────
   sectionLabel(body, "Access Authorization");
@@ -714,19 +714,19 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   if (accessPeople.length === 0) {
     var noneP = body.appendParagraph("None provided");
     noneP.editAsText().setFontSize(9).setItalic(true).setForegroundColor(TEXT_MUTED);
-    try { noneP.setSpacingBefore(2).setSpacingAfter(2); } catch(e) {}
+    try { noneP.setSpacingBefore(0).setSpacingAfter(0); } catch(e) {}
   } else {
     var accessData = [["Name", "Phone Number"]];
     accessPeople.forEach(function(p) { accessData.push([safe(p.name), safe(p.phone)]); });
     cleanTable(body, PW, accessData, true);
   }
-  spacer(body, 10);
+  spacer(body, 4);
 
   // ── 6. STORAGE & PAYMENT ──────────────────────────────────────────────────
   sectionLabel(body, "Storage & Payment Details");
 
-  // Format unit and insurance display values. If WSS data is absent (older
-  // submissions, cash flow, etc.) we render an em-dash.
+  // Format unit display value. If WSS data is absent (older submissions,
+  // cash flow, etc.) we render an em-dash.
   var unitLine = "";
   if (data.unitSize || data.unitDimensions) {
     unitLine = safe(data.unitDimensions || data.unitSize);
@@ -735,21 +735,11 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
     }
   }
 
-  var insuranceLine = "No coverage selected";
-  if (data.insuranceDescription) {
-    insuranceLine = safe(data.insuranceDescription);
-    if (data.insuranceMonthlyRate) {
-      insuranceLine += "   ·   $" + safe(data.insuranceMonthlyRate) + "/mo";
-    }
-  }
-
   fieldRow(body, PW, "Rental Start Date",   safe(data.rentalStartDate),
                      "Payment Method",       safe(data.paymentMethod));
   fieldRow(body, PW, "Unit Size",           unitLine || "—",
                      "Enrolled in Autopay", safe(data.autopay));
-  fieldRow(body, PW, "Insurance",           insuranceLine,
-                     "",                     "");
-  spacer(body, 10);
+  spacer(body, 4);
 
   // ── 7. MARKETING ──────────────────────────────────────────────────────────
   sectionLabel(body, "Marketing & Storage Information");
@@ -759,7 +749,6 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   if (data.whyChose)         mktRows.push(["Why they chose us",    safe(data.whyChose)]);
   if (data.whatStored)       mktRows.push(["What is being stored", safe(data.whatStored)]);
   cleanTable(body, PW, mktRows, false);
-  spacer(body, 6);
 
   // ── PAGE 2 ────────────────────────────────────────────────────────────────
   body.appendPageBreak();
@@ -851,34 +840,36 @@ function sectionLabel(body, label) {
     var p = cell.getChild(0).asParagraph();
     p.setText(label.toUpperCase());
     p.editAsText()
-      .setFontSize(8)
+      .setFontSize(10)
       .setBold(true)
       .setForegroundColor(BRAND_NAVY);
 
-    try { cell.setPaddingTop(0).setPaddingBottom(4).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
+    try { cell.setPaddingTop(0).setPaddingBottom(2).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
   } catch(e) {}
 
-  // Thin navy rule directly under the section label
+  // Thin light-gray rule directly under the section label
   navyRule(body, 504);
-  spacer(body, 4);
+  spacer(body, 2);
 }
 
-// Thin full-width navy horizontal rule (1pt height table)
+// Thin full-width neutral horizontal rule (1pt height table)
+// Previously navy — now a soft gray so it separates sections without
+// being visually loud.
 function navyRule(body, pageWidth) {
   var t = body.appendTable([[""]]);
   t.setBorderWidth(0);
   try { t.setColumnWidth(0, pageWidth || 504); } catch(e) {}
   var c = t.getCell(0, 0);
-  try { c.setBackgroundColor(BRAND_NAVY); } catch(e) {}
+  try { c.setBackgroundColor(RULE_LIGHT); } catch(e) {}
   try { c.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0); } catch(e) {}
-  c.getChild(0).asParagraph().editAsText().setFontSize(0.75).setForegroundColor(BRAND_NAVY);
+  c.getChild(0).asParagraph().editAsText().setFontSize(0.75).setForegroundColor(RULE_LIGHT);
 }
 
 // Two-pair field row: label1 | value1 | label2 | value2
 // Labels are small gray caps above; values are large dark bold below.
 // Rendered as a 4-column borderless table.
 function fieldRow(body, pageWidth, label1, value1, label2, value2) {
-  var LW = 85;  // label column width
+  var LW = 105; // label column width (wider so 9pt labels don't wrap)
   var VW = Math.floor(pageWidth / 2) - LW;
 
   var hasSecond = label2 || value2;
@@ -899,13 +890,13 @@ function fieldRow(body, pageWidth, label1, value1, label2, value2) {
 
   var row = tbl.getRow(0);
   for (var c = 0; c < 4; c++) {
-    try { row.getCell(c).setPaddingTop(2).setPaddingBottom(4).setPaddingLeft(0).setPaddingRight(6); } catch(e) {}
+    try { row.getCell(c).setPaddingTop(1).setPaddingBottom(2).setPaddingLeft(0).setPaddingRight(6); } catch(e) {}
   }
 
-  // Label columns — small, muted, uppercase
+  // Label columns — readable, dark gray
   [0, 2].forEach(function(ci) {
     row.getCell(ci).getChild(0).asParagraph()
-      .editAsText().setFontSize(7).setBold(false).setForegroundColor(TEXT_MUTED);
+      .editAsText().setFontSize(9).setBold(false).setForegroundColor(TEXT_DARK);
   });
   // Value columns — dark, bold, readable
   [1, 3].forEach(function(ci) {

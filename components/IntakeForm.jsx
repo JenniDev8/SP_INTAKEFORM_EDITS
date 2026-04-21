@@ -307,31 +307,27 @@ export default function IntakeForm() {
   const [submitWarning, setSubmitWarning] = useState(null);
   const [error, setError] = useState(null);
 
-  // Unit sizes + insurance loaded from WSS whenever the location changes
+  // Unit sizes loaded from WSS whenever the location changes
   const [availableSizes, setAvailableSizes] = useState([]);
-  const [availableInsurance, setAvailableInsurance] = useState([]);
   const [sizesLoading, setSizesLoading] = useState(false);
   const [sizesError, setSizesError] = useState(null);
 
   useEffect(() => {
     if (!form.location) {
       setAvailableSizes([]);
-      setAvailableInsurance([]);
       return;
     }
     let cancelled = false;
     setSizesLoading(true);
     setSizesError(null);
     fetchAvailableSizes(form.location)
-      .then(({ sizes, insurance }) => {
+      .then(({ sizes }) => {
         if (cancelled) return;
         setAvailableSizes(sizes || []);
-        setAvailableInsurance(insurance || []);
       })
       .catch((err) => {
         if (cancelled) return;
         setAvailableSizes([]);
-        setAvailableInsurance([]);
         setSizesError(err.message || "Could not load available sizes.");
       })
       .finally(() => {
@@ -473,6 +469,7 @@ export default function IntakeForm() {
     if (!form.marketing.howHeard) missing.push('"How did you hear about us?"');
     if (!form.unitSelection.unitId) missing.push("Unit Size");
     if (!form.payment.method) missing.push("Payment Method");
+    if (!form.payment.autopay) missing.push("Sign up for Autopayment (Yes/No)");
 
     // Credit-card path: require card fields + billing address
     if (form.payment.method === "Credit Card") {
@@ -656,67 +653,6 @@ export default function IntakeForm() {
                 }
               />
             )}
-          </div>
-        )}
-
-        {/* ── INSURANCE COVERAGE (optional) ── */}
-        {form.location && !sizesLoading && availableInsurance.length > 0 && (
-          <div className="form-section">
-            <SectionTitle>Insurance Coverage</SectionTitle>
-            <p className="text-xs text-gray-500 -mt-2 mb-4 leading-relaxed">
-              Optional. Skip this section if you have your own insurance that
-              covers stored items.
-            </p>
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() =>
-                  set("insuranceSelection", { insuranceId: "", description: "", monthlyRate: 0 })
-                }
-                className={`w-full text-left border rounded-xl px-4 py-3 transition ${
-                  !form.insuranceSelection.insuranceId
-                    ? "border-brand-navy bg-brand-navy/5 ring-2 ring-brand-navy/20"
-                    : "border-gray-200 hover:border-brand-navy/50 bg-white"
-                }`}
-              >
-                <div className="font-semibold text-brand-navy">
-                  No coverage
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  I have my own insurance.
-                </div>
-              </button>
-              {availableInsurance.map((ins) => {
-                const selected = form.insuranceSelection.insuranceId === ins.insuranceId;
-                return (
-                  <button
-                    key={ins.insuranceId}
-                    type="button"
-                    onClick={() =>
-                      set("insuranceSelection", {
-                        insuranceId: ins.insuranceId,
-                        description: ins.description,
-                        monthlyRate: ins.monthlyRate,
-                      })
-                    }
-                    className={`w-full text-left border rounded-xl px-4 py-3 transition ${
-                      selected
-                        ? "border-brand-navy bg-brand-navy/5 ring-2 ring-brand-navy/20"
-                        : "border-gray-200 hover:border-brand-navy/50 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-semibold text-brand-navy">
-                        {ins.description}
-                      </span>
-                      <span className="text-sm font-semibold text-brand-blue">
-                        ${Number(ins.monthlyRate).toFixed(2)}/mo
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
           </div>
         )}
 
@@ -1033,7 +969,7 @@ export default function IntakeForm() {
               </div>
             )}
 
-            <Field label="Sign up for Autopayment?">
+            <Field label="Sign up for Autopayment?" required>
               <div className="flex flex-wrap gap-2 sm:gap-3">
                 {["Yes", "No"].map((opt) => (
                   <label key={opt} className="pill-option">
