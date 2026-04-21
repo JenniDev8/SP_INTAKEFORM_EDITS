@@ -721,8 +721,8 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
 
   spacer(body, 6);
 
-  // ── 5. ADDITIONAL ACCESS ──────────────────────────────────────────────────
-  sectionBar(body, "ADDITIONAL ACCESS AUTHORIZATION", PW);
+  // ── 5. ACCESS AUTHORIZATION ───────────────────────────────────────────────
+  sectionBar(body, "ACCESS AUTHORIZATION", PW);
 
   var accessPeople = [];
   try { accessPeople = JSON.parse(data.additionalAccess || "[]"); } catch(e) {}

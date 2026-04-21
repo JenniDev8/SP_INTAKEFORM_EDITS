@@ -92,7 +92,6 @@ const INITIAL_STATE = {
   },
   additionalAccess: [
     { name: "", phone: "" },
-    { name: "", phone: "" },
   ],
   payment: { method: "", autopay: "" },
   startDate: "",
@@ -687,9 +686,9 @@ export default function IntakeForm() {
           </div>
         </div>
 
-        {/* ── ADDITIONAL ACCESS ── */}
+        {/* ── ACCESS AUTHORIZATION ── */}
         <div className="form-section">
-          <SectionTitle>Additional Access Authorization</SectionTitle>
+          <SectionTitle>Access Authorization</SectionTitle>
           <p className="text-xs text-gray-500 mb-4 -mt-2 leading-relaxed">
             Persons authorized to vacate/close account, transfer, or cut lock,
             and can be contacted in case of an emergency.
@@ -713,7 +712,7 @@ export default function IntakeForm() {
                     onChange={(e) => updateAccess(idx, "phone", e.target.value)}
                   />
                 </Field>
-                {idx >= 2 && (
+                {idx >= 1 && (
                   <button
                     type="button"
                     onClick={() => removeAccess(idx)}
