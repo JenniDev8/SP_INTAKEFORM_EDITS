@@ -56,6 +56,46 @@ var LOCATION_TO_EMAILS = {
 // regardless of location. Leave as [] to disable.
 var ALWAYS_NOTIFY = [];
 
+// ── EMAIL DIAGNOSTICS ─────────────────────────────────────────────────────────
+// Run these from the Apps Script editor (pick function → click ▶ Run).
+// If these functions don't appear in the dropdown after saving Code.gs,
+// the editor hasn't picked up your changes yet — do File → Save (⌘S) first.
+// If emails from these tests don't arrive either, the problem is with MailApp
+// quota/delivery (check spam!), NOT with the form submission pipeline.
+
+// Sends a bare-bones test email to every address configured for "williamsburg"
+// (no attachments, no HTML, no form data) to confirm MailApp is working.
+function testEmail() {
+  var recipients = getEmailsForLocation("williamsburg");
+  Logger.log("Resolved recipients for 'williamsburg': " + JSON.stringify(recipients));
+  if (!recipients || recipients.length === 0) {
+    Logger.log("❌ No recipients configured. Check LOCATION_TO_EMAILS['williamsburg'].");
+    return;
+  }
+  MailApp.sendEmail({
+    to: recipients.join(","),
+    subject: "Storage Plus – test email (ignore)",
+    body: "If you're reading this, MailApp + your Williamsburg recipient list work.\n\n— Storage Plus Intake",
+    name: "Storage Plus Intake",
+  });
+  Logger.log("✅ Test email sent to: " + recipients.join(", "));
+  Logger.log("MailApp quota remaining today: " + MailApp.getRemainingDailyQuota());
+}
+
+// Simulates the full location → recipients resolution for EVERY configured
+// location, without sending any email. Useful to verify the mapping.
+function testLocationResolution() {
+  var samples = [
+    "Long Island City – 37-11 47th Avenue, Long Island City, NY 11101",
+    "Greenpoint – 425 Greenpoint Ave, Brooklyn, NY 11222",
+    "Williamsburg – 1053 Metropolitan Avenue, Brooklyn, NY 11211",
+    "Jamaica – 130-17 Liberty Ave, South Richmond Hill, NY 11419",
+  ];
+  samples.forEach(function (loc) {
+    Logger.log(loc + "  ⇒  " + JSON.stringify(getEmailsForLocation(loc)));
+  });
+}
+
 // ── ADMIN / TOKEN CONFIG ──────────────────────────────────────────────────────
 // Allowed admin emails (work accounts only).
 // LEAVE EMPTY [] to allow any signed-in Google user (NOT recommended).
