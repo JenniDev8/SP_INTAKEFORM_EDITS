@@ -48,7 +48,7 @@ var LOCATION_TO_TAB = {
 var LOCATION_TO_EMAILS = {
   "long island city": ["storageplus@nystorage.com", "romc@nystorage.com"],
   "greenpoint":       ["greenpoint@nystorage.com", "romc@nystorage.com"],
-  "williamsburg":     ["nyc@nystorage.com",        "inari@nystorage.com"],
+  "williamsburg":     ["jennifer@nystorage.com"],
   "jamaica":          ["liberty@nystorage.com",    "roman@nystorage.com"],
 };
 
@@ -88,7 +88,7 @@ var TOKEN_COLUMNS = [
 var COLUMNS = [
   "Timestamp",
   "Location",
-  "Account Type",
+  "Contract Type",
   "Business Name",
   "First Name",
   "Last Name",
@@ -100,14 +100,15 @@ var COLUMNS = [
   "ZIP+4",
   "Phone Number(s)",
   "Email Address(es)",
-  "Additional Access",
+  "Authorized Access",
+  "Authorized Access Phone",
   "How Heard",
   "Reason For Storing",
   "Why Chose Us",
   "What Is Being Stored",
   "Payment Method",
   "Autopay",
-  "Storage Start Date",
+  "Lease Start Date",
   "ID Front (Drive Link)",
   "ID Back (Drive Link)",
   "Signature (Drive Link)",
@@ -195,7 +196,8 @@ function doPost(e) {
     // Parse phones and emails into readable strings
     var phonesStr = formatPhones(data.phones);
     var emailsStr = formatEmails(data.emails);
-    var accessStr = formatAccess(data.additionalAccess);
+    var accessNamesStr = formatAccessNames(data.additionalAccess);
+    var accessPhonesStr = formatAccessPhones(data.additionalAccess);
 
     // Build the row — NO credit card numbers, just payment method
     var row = [
@@ -213,7 +215,8 @@ function doPost(e) {
       data.zipPlusFour || "",
       phonesStr,
       emailsStr,
-      accessStr,
+      accessNamesStr,
+      accessPhonesStr,
       data.howHeard || "",
       data.reasonForStoring || "",
       data.whyChose || "",
@@ -508,12 +511,32 @@ function formatEmails(emailsJson) {
   }
 }
 
-function formatAccess(accessJson) {
+function parseAccessPeople(accessJson) {
   try {
     var people = JSON.parse(accessJson || "[]");
-    return people
-      .filter(function(p) { return p.name || p.phone; })
-      .map(function(p) { return p.name + " " + p.phone; })
+    return people.filter(function (p) { return p && (p.name || p.phone); });
+  } catch (e) {
+    return [];
+  }
+}
+
+function formatAccessNames(accessJson) {
+  return parseAccessPeople(accessJson)
+    .map(function (p) { return p.name || ""; })
+    .join(" | ");
+}
+
+function formatAccessPhones(accessJson) {
+  return parseAccessPeople(accessJson)
+    .map(function (p) { return p.phone || ""; })
+    .join(" | ");
+}
+
+// Kept for backwards compatibility if referenced elsewhere in this project.
+function formatAccess(accessJson) {
+  try {
+    return parseAccessPeople(accessJson)
+      .map(function (p) { return (p.name || "") + " " + (p.phone || ""); })
       .join(" | ");
   } catch (e) {
     return accessJson || "";
