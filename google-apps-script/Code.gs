@@ -121,11 +121,27 @@ var COLUMNS = [
   "Payment Method",
   "Autopay",
   "Rental Start Date",
+  "Unit Size",
+  "Unit Dimensions",
+  "Unit Monthly Rate",
+  "Insurance",
+  "Insurance Monthly Rate",
+  "Reservation Status",
+  "Reservation Note",
   "ID Front (Drive Link)",
   "ID Back (Drive Link)",
   "Signature (Drive Link)",
   "Intake PDF (Drive Link)",
 ];
+
+// Translate internal wssStatus values into human-readable text for the sheet.
+function formatWssStatus(status) {
+  var s = String(status || "").toLowerCase();
+  if (s === "reserved") return "Reserved in WSS";
+  if (s === "skipped")  return "Skipped (Cash)";
+  if (s === "failed")   return "Failed – manual entry needed";
+  return "";
+}
 
 // ── MAIN HANDLER ──────────────────────────────────────────────────────────────
 
@@ -219,6 +235,13 @@ function doPost(e) {
       data.paymentMethod || "",   // "Credit Card" or "Cash" — no card number
       data.autopay || "",
       data.rentalStartDate || "",
+      data.unitSize || "",
+      data.unitDimensions || "",
+      data.unitMonthlyRate || "",
+      data.insuranceDescription || "",
+      data.insuranceMonthlyRate || "",
+      formatWssStatus(data.wssStatus),
+      data.wssError || "",
       idFrontLink,
       idBackLink,
       signatureLink,
@@ -702,9 +725,29 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   // ── 6. STORAGE & PAYMENT ──────────────────────────────────────────────────
   sectionLabel(body, "Storage & Payment Details");
 
+  // Format unit and insurance display values. If WSS data is absent (older
+  // submissions, cash flow, etc.) we render an em-dash.
+  var unitLine = "";
+  if (data.unitSize || data.unitDimensions) {
+    unitLine = safe(data.unitDimensions || data.unitSize);
+    if (data.unitMonthlyRate) {
+      unitLine += "   ·   $" + safe(data.unitMonthlyRate) + "/mo";
+    }
+  }
+
+  var insuranceLine = "No coverage selected";
+  if (data.insuranceDescription) {
+    insuranceLine = safe(data.insuranceDescription);
+    if (data.insuranceMonthlyRate) {
+      insuranceLine += "   ·   $" + safe(data.insuranceMonthlyRate) + "/mo";
+    }
+  }
+
   fieldRow(body, PW, "Rental Start Date",   safe(data.rentalStartDate),
                      "Payment Method",       safe(data.paymentMethod));
-  fieldRow(body, PW, "Enrolled in Autopay", safe(data.autopay),
+  fieldRow(body, PW, "Unit Size",           unitLine || "—",
+                     "Enrolled in Autopay", safe(data.autopay));
+  fieldRow(body, PW, "Insurance",           insuranceLine,
                      "",                     "");
   spacer(body, 10);
 
@@ -991,6 +1034,11 @@ function previewIntakePdf() {
     paymentMethod: "Credit Card",
     autopay: "Yes",
     rentalStartDate: "2026-05-01",
+    unitSize: "5x7",
+    unitDimensions: "5' x 7' x 8'",
+    unitMonthlyRate: 95,
+    insuranceDescription: "Bronze Coverage",
+    insuranceMonthlyRate: 12,
   };
 
   var result = generateIntakePdf(previewFolder, sampleData, "PREVIEW_Jane_Doe", null, null, null);

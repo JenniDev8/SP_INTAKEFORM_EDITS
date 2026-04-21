@@ -1,8 +1,9 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import SignaturePad from "./SignaturePad";
 import { submitIntakeForm } from "@/lib/submitForm";
+import { fetchAvailableSizes } from "@/lib/wssClient";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -93,7 +94,25 @@ const INITIAL_STATE = {
   additionalAccess: [
     { name: "", phone: "" },
   ],
+  // Unit size picked by the customer; staff assigns the physical unit later.
+  // unitId is the UUID sent to WSS; the rest is display metadata.
+  unitSelection: {
+    unitId: "",
+    displaySize: "",
+    dimensions: "",
+    monthly: 0,
+  },
+  // Optional WSS insurance coverage. Empty insuranceId = no coverage selected.
+  insuranceSelection: {
+    insuranceId: "",
+    description: "",
+    monthlyRate: 0,
+  },
   payment: { method: "", autopay: "" },
+  billingSameAsMailing: true,
+  billingAddress: { address: "", aptSte: "", city: "", state: "", zip: "" },
+  // Credit card is sent to WSS ONLY. It is never sent to Google.
+  creditCard: { number: "", expMmYy: "", csc: "" },
   startDate: "",
   identification: { frontImage: null, backImage: null, frontName: "", backName: "" },
   signature: null,
@@ -163,6 +182,120 @@ function CheckboxGroup({ options, value, onChange }) {
   );
 }
 
+// ─── UnitSizeDropdown ────────────────────────────────────────────────────────
+// Custom-styled dropdown that preserves size + dimensions + monthly rate for
+// both the closed selector and each open option. Closes on outside click /
+// Escape.
+function UnitSizeDropdown({ sizes, value, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const selected = sizes.find((s) => s.unitId === value) || null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`w-full text-left bg-white border rounded-xl px-4 py-3.5 transition flex items-center justify-between gap-3 ${
+          open
+            ? "border-brand-navy ring-2 ring-brand-navy/20"
+            : "border-gray-200 hover:border-brand-navy/50"
+        }`}
+      >
+        <div className="flex-1 min-w-0">
+          {selected ? (
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-display font-semibold text-brand-navy text-base truncate">
+                  {selected.displaySize}
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5 truncate">
+                  {selected.dimensions}
+                </div>
+              </div>
+              <div className="text-sm font-semibold text-brand-blue whitespace-nowrap">
+                ${Number(selected.monthly).toFixed(2)}/mo
+              </div>
+            </div>
+          ) : (
+            <span className="text-gray-400">Select a unit size</span>
+          )}
+        </div>
+        <svg
+          className={`w-5 h-5 text-gray-400 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute z-20 left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden max-h-80 overflow-y-auto"
+        >
+          {sizes.map((s) => {
+            const isSelected = s.unitId === value;
+            return (
+              <button
+                key={s.unitId}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => {
+                  onSelect(s);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 transition ${
+                  isSelected ? "bg-brand-navy/5" : "hover:bg-gray-50"
+                }`}
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-display font-semibold text-brand-navy text-base flex items-center gap-2">
+                      <span>{s.displaySize}</span>
+                      {isSelected && (
+                        <svg className="w-4 h-4 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">{s.dimensions}</div>
+                  </div>
+                  <div className="text-sm font-semibold text-brand-blue whitespace-nowrap">
+                    ${Number(s.monthly).toFixed(2)}/mo
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function IntakeForm() {
@@ -171,7 +304,43 @@ export default function IntakeForm() {
   const [form, setForm] = useState(INITIAL_STATE);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submitWarning, setSubmitWarning] = useState(null);
   const [error, setError] = useState(null);
+
+  // Unit sizes + insurance loaded from WSS whenever the location changes
+  const [availableSizes, setAvailableSizes] = useState([]);
+  const [availableInsurance, setAvailableInsurance] = useState([]);
+  const [sizesLoading, setSizesLoading] = useState(false);
+  const [sizesError, setSizesError] = useState(null);
+
+  useEffect(() => {
+    if (!form.location) {
+      setAvailableSizes([]);
+      setAvailableInsurance([]);
+      return;
+    }
+    let cancelled = false;
+    setSizesLoading(true);
+    setSizesError(null);
+    fetchAvailableSizes(form.location)
+      .then(({ sizes, insurance }) => {
+        if (cancelled) return;
+        setAvailableSizes(sizes || []);
+        setAvailableInsurance(insurance || []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setAvailableSizes([]);
+        setAvailableInsurance([]);
+        setSizesError(err.message || "Could not load available sizes.");
+      })
+      .finally(() => {
+        if (!cancelled) setSizesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.location]);
 
   // ── Update helpers ──────────────────────────────────────────────────────────
 
@@ -294,6 +463,7 @@ export default function IntakeForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setSubmitWarning(null);
 
     // Required fields that aren't covered by native HTML validation
     const missing = [];
@@ -301,6 +471,25 @@ export default function IntakeForm() {
       missing.push("Business Name");
     }
     if (!form.marketing.howHeard) missing.push('"How did you hear about us?"');
+    if (!form.unitSelection.unitId) missing.push("Unit Size");
+    if (!form.payment.method) missing.push("Payment Method");
+
+    // Credit-card path: require card fields + billing address
+    if (form.payment.method === "Credit Card") {
+      const cc = form.creditCard;
+      if (!cc.number.trim()) missing.push("Credit Card Number");
+      if (!cc.expMmYy.trim()) missing.push("Card Expiration");
+      if (!cc.csc.trim()) missing.push("Card CVV");
+
+      if (!form.billingSameAsMailing) {
+        const b = form.billingAddress;
+        if (!b.address.trim()) missing.push("Billing Address");
+        if (!b.city.trim()) missing.push("Billing City");
+        if (!b.state.trim()) missing.push("Billing State");
+        if (!b.zip.trim()) missing.push("Billing ZIP");
+      }
+    }
+
     if (!form.identification.frontImage) missing.push("ID Front photo");
     if (!form.identification.backImage) missing.push("ID Back photo");
     if (!form.signature) missing.push("Signature");
@@ -312,12 +501,18 @@ export default function IntakeForm() {
 
     setSubmitting(true);
     try {
-      await submitIntakeForm(form);
+      const result = await submitIntakeForm(form);
+      // Google saved. If the customer paid by card and WSS failed, warn them.
+      if (form.payment.method === "Credit Card" && result.wssOk === false) {
+        setSubmitWarning(
+          "Your intake was saved, but we couldn't complete the online reservation. Please call the office to finalize payment — our team has your information."
+        );
+      }
       setSubmitted(true);
-      // Reset after 4 seconds then go back to welcome
+      // Reset after 6 seconds (a bit longer when there's a warning to read)
       setTimeout(() => {
         router.push("/");
-      }, 4000);
+      }, 6000);
     } catch (err) {
       setError(err.message || "Submission failed. Please try again.");
       setSubmitting(false);
@@ -347,10 +542,20 @@ export default function IntakeForm() {
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-brand-navy mb-3">
             Intake Submitted!
           </h1>
-          <p className="text-gray-600 text-sm leading-relaxed mb-6 sm:mb-8">
+          <p className="text-gray-600 text-sm leading-relaxed mb-4 sm:mb-6">
             The intake form for{" "}
             <strong className="text-brand-navy">{form.customer.firstName} {form.customer.lastName}</strong>{" "}
-            has been received and saved. Returning to the welcome screen…
+            has been received and saved.
+          </p>
+
+          {submitWarning && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900 leading-relaxed text-left mb-6">
+              ⚠️ {submitWarning}
+            </div>
+          )}
+
+          <p className="text-gray-500 text-xs mb-6 sm:mb-8">
+            Returning to the welcome screen…
           </p>
 
           <button
@@ -407,6 +612,113 @@ export default function IntakeForm() {
             />
           </Field>
         </div>
+
+        {/* ── UNIT SIZE & RATE ── */}
+        {form.location && (
+          <div className="form-section">
+            <SectionTitle>Unit Size &amp; Rate</SectionTitle>
+            <p className="text-xs text-gray-500 -mt-2 mb-4 leading-relaxed">
+              Choose the size you'd like to reserve. Our staff will assign the
+              specific unit when you arrive.
+            </p>
+
+            {sizesLoading && (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="w-4 h-4 border-2 border-brand-navy/20 border-t-brand-navy rounded-full animate-spin" />
+                Loading available sizes…
+              </div>
+            )}
+
+            {!sizesLoading && sizesError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+                ⚠️ {sizesError}
+              </div>
+            )}
+
+            {!sizesLoading && !sizesError && availableSizes.length === 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                No sizes are currently available for this location. Please
+                contact the office.
+              </div>
+            )}
+
+            {!sizesLoading && availableSizes.length > 0 && (
+              <UnitSizeDropdown
+                sizes={availableSizes}
+                value={form.unitSelection.unitId}
+                onSelect={(s) =>
+                  set("unitSelection", {
+                    unitId: s.unitId,
+                    displaySize: s.displaySize,
+                    dimensions: s.dimensions,
+                    monthly: s.monthly,
+                  })
+                }
+              />
+            )}
+          </div>
+        )}
+
+        {/* ── INSURANCE COVERAGE (optional) ── */}
+        {form.location && !sizesLoading && availableInsurance.length > 0 && (
+          <div className="form-section">
+            <SectionTitle>Insurance Coverage</SectionTitle>
+            <p className="text-xs text-gray-500 -mt-2 mb-4 leading-relaxed">
+              Optional. Skip this section if you have your own insurance that
+              covers stored items.
+            </p>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() =>
+                  set("insuranceSelection", { insuranceId: "", description: "", monthlyRate: 0 })
+                }
+                className={`w-full text-left border rounded-xl px-4 py-3 transition ${
+                  !form.insuranceSelection.insuranceId
+                    ? "border-brand-navy bg-brand-navy/5 ring-2 ring-brand-navy/20"
+                    : "border-gray-200 hover:border-brand-navy/50 bg-white"
+                }`}
+              >
+                <div className="font-semibold text-brand-navy">
+                  No coverage
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  I have my own insurance.
+                </div>
+              </button>
+              {availableInsurance.map((ins) => {
+                const selected = form.insuranceSelection.insuranceId === ins.insuranceId;
+                return (
+                  <button
+                    key={ins.insuranceId}
+                    type="button"
+                    onClick={() =>
+                      set("insuranceSelection", {
+                        insuranceId: ins.insuranceId,
+                        description: ins.description,
+                        monthlyRate: ins.monthlyRate,
+                      })
+                    }
+                    className={`w-full text-left border rounded-xl px-4 py-3 transition ${
+                      selected
+                        ? "border-brand-navy bg-brand-navy/5 ring-2 ring-brand-navy/20"
+                        : "border-gray-200 hover:border-brand-navy/50 bg-white"
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="font-semibold text-brand-navy">
+                        {ins.description}
+                      </span>
+                      <span className="text-sm font-semibold text-brand-blue">
+                        ${Number(ins.monthlyRate).toFixed(2)}/mo
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ── CUSTOMER DETAILS ── */}
         <div className="form-section">
@@ -694,7 +1006,7 @@ export default function IntakeForm() {
 
         {/* ── PAYMENT ── */}
         <div className="form-section">
-          <SectionTitle>Payment Section</SectionTitle>
+          <SectionTitle>Payment</SectionTitle>
           <div className="space-y-5">
             <Field label="How will you pay today?" required>
               <div className="flex flex-wrap gap-2 sm:gap-3">
@@ -715,6 +1027,12 @@ export default function IntakeForm() {
               </div>
             </Field>
 
+            {form.payment.method === "Cash" && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900 leading-relaxed">
+                <strong>Please note:</strong> To secure and hold your reservation, a credit card is required. If you continue without entering one, your information will be saved and our team will contact you to finalize payment in person.
+              </div>
+            )}
+
             <Field label="Sign up for Autopayment?">
               <div className="flex flex-wrap gap-2 sm:gap-3">
                 {["Yes", "No"].map((opt) => (
@@ -733,6 +1051,128 @@ export default function IntakeForm() {
                 ))}
               </div>
             </Field>
+
+            {/* Credit card + billing — only when customer pays by card */}
+            {form.payment.method === "Credit Card" && (
+              <div className="space-y-5 pt-2 border-t border-gray-100">
+                <div>
+                  <h3 className="text-sm font-semibold text-brand-navy uppercase tracking-wider mb-3">
+                    Billing Address
+                  </h3>
+                  <label className="flex items-center gap-2 mb-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={form.billingSameAsMailing}
+                      onChange={(e) => set("billingSameAsMailing", e.target.checked)}
+                      className="w-4 h-4 accent-brand-navy"
+                    />
+                    <span className="text-sm text-gray-700">
+                      Same as mailing address
+                    </span>
+                  </label>
+
+                  {!form.billingSameAsMailing && (
+                    <div className="space-y-3">
+                      <div className="flex gap-3 flex-wrap">
+                        <Field label="Street Address" required half>
+                          <input
+                            className="input-base"
+                            placeholder="123 Main St"
+                            autoComplete="billing street-address"
+                            value={form.billingAddress.address}
+                            onChange={(e) => set("billingAddress.address", e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Apt / Ste / Other" half>
+                          <input
+                            className="input-base"
+                            placeholder="Apt 2B"
+                            value={form.billingAddress.aptSte}
+                            onChange={(e) => set("billingAddress.aptSte", e.target.value)}
+                          />
+                        </Field>
+                      </div>
+                      <div className="flex gap-3 flex-wrap">
+                        <Field label="City" required half>
+                          <input
+                            className="input-base"
+                            placeholder="City"
+                            autoComplete="billing address-level2"
+                            value={form.billingAddress.city}
+                            onChange={(e) => set("billingAddress.city", e.target.value)}
+                          />
+                        </Field>
+                        <Field label="State" required half>
+                          <Select
+                            value={form.billingAddress.state}
+                            onChange={(e) => set("billingAddress.state", e.target.value)}
+                            options={US_STATES}
+                            placeholder="State"
+                          />
+                        </Field>
+                      </div>
+                      <div className="flex gap-3 flex-wrap">
+                        <Field label="ZIP Code" required half>
+                          <input
+                            className="input-base"
+                            placeholder="10001"
+                            maxLength={5}
+                            autoComplete="billing postal-code"
+                            value={form.billingAddress.zip}
+                            onChange={(e) => set("billingAddress.zip", e.target.value)}
+                          />
+                        </Field>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-brand-navy uppercase tracking-wider mb-3">
+                    Card Information
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                    Your card details are sent securely and are never stored in our records.
+                  </p>
+                  <div className="space-y-3">
+                    <Field label="Card Number" required>
+                      <input
+                        className="input-base"
+                        inputMode="numeric"
+                        autoComplete="cc-number"
+                        placeholder="1234 5678 9012 3456"
+                        value={form.creditCard.number}
+                        onChange={(e) => set("creditCard.number", e.target.value)}
+                      />
+                    </Field>
+                    <div className="flex gap-3 flex-wrap">
+                      <Field label="Expiration (MM/YY)" required half>
+                        <input
+                          className="input-base"
+                          inputMode="numeric"
+                          autoComplete="cc-exp"
+                          placeholder="MM/YY"
+                          maxLength={5}
+                          value={form.creditCard.expMmYy}
+                          onChange={(e) => set("creditCard.expMmYy", e.target.value)}
+                        />
+                      </Field>
+                      <Field label="CVV" required half>
+                        <input
+                          className="input-base"
+                          inputMode="numeric"
+                          autoComplete="cc-csc"
+                          placeholder="123"
+                          maxLength={4}
+                          value={form.creditCard.csc}
+                          onChange={(e) => set("creditCard.csc", e.target.value)}
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
