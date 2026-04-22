@@ -581,7 +581,7 @@ function formatNiceDate(iso) {
   if (!iso) return "—";
   try {
     var d = new Date(iso);
-    return Utilities.formatDate(d, Session.getScriptTimeZone() || "America/New_York", "MMM d, yyyy h:mm a");
+    return Utilities.formatDate(d, Session.getScriptTimeZone() || "America/New_York", "MM/dd/yyyy h:mm a");
   } catch (e) {
     return String(iso);
   }

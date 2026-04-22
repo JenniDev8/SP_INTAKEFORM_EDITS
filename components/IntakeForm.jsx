@@ -8,10 +8,10 @@ import { fetchAvailableSizes } from "@/lib/wssClient";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const LOCATIONS = [
-  "Long Island City – 3500 Review Avenue, Long Island City, NY 11101 · (718) 658-5200",
-  "Greenpoint – 425 Greenpoint Avenue, Brooklyn, NY 11222 · (718) 383-3010",
-  "Williamsburg – 1053 Metropolitan Avenue, Brooklyn, NY 11211 · (718) 302-0500",
-  "Jamaica – 165-08 Liberty Avenue, Jamaica, NY 11433 · (718) 658-5200",
+  "Long Island City",
+  "Greenpoint",
+  "Williamsburg",
+  "Jamaica",
 ];
 
 const US_STATES = [
@@ -77,7 +77,7 @@ const WHAT_STORED_OPTIONS = [
 
 const JAMAICA_PREFIX = "Jamaica";
 
-const CONTRACT_TYPES = ["Business", "Corporate", "Individual"];
+const CONTRACT_TYPES = ["Individual", "Business"];
 
 const INITIAL_STATE = {
   location: "",
@@ -852,8 +852,8 @@ export default function IntakeForm() {
         <div className="form-section">
           <SectionTitle>Access Authorization</SectionTitle>
           <p className="text-xs text-gray-500 mb-4 -mt-2 leading-relaxed">
-            Persons authorized to vacate/close account, transfer, or cut lock,
-            and can be contacted in case of an emergency.
+            Individuals permitted to access the account, make changes (i.e.,
+            transfer, vacate, remove locks), and be contacted in emergencies.
           </p>
           <div className="space-y-4">
             {form.additionalAccess.map((person, idx) => (
@@ -1131,12 +1131,12 @@ export default function IntakeForm() {
         <div className="form-section">
           <SectionTitle>Identification</SectionTitle>
           <p className="text-xs text-gray-500 -mt-2 mb-4">
-            Both the front and back of your ID are required.
+            Both the front and back of a valid ID are required.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
-              { side: "front", label: "Upload ID (Front)", stored: form.identification.frontName },
-              { side: "back", label: "Upload ID (Back)", stored: form.identification.backName },
+              { side: "front", label: "Upload Valid ID (Front)", stored: form.identification.frontName },
+              { side: "back", label: "Upload Valid ID (Back)", stored: form.identification.backName },
             ].map(({ side, label, stored }) => (
               <div key={side}>
                 <label className="label-base">
