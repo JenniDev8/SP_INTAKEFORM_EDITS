@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import SignaturePad from "./SignaturePad";
+import LanguageSwitcher from "./LanguageSwitcher";
 import { submitIntakeForm } from "@/lib/submitForm";
 import { fetchAvailableSizes } from "@/lib/wssClient";
 
@@ -579,9 +580,12 @@ export default function IntakeForm() {
             alt="Storage Plus"
             className="h-7 sm:h-8 w-auto"
           />
-          <span className="text-brand-navy text-[10px] sm:text-xs font-semibold uppercase tracking-widest">
-            Intake Form
-          </span>
+          <div className="flex items-center gap-3">
+            <LanguageSwitcher />
+            <span className="hidden sm:inline text-brand-navy text-xs font-semibold uppercase tracking-widest">
+              Intake Form
+            </span>
+          </div>
         </div>
       </header>
 
