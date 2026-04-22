@@ -615,8 +615,7 @@ export default function IntakeForm() {
           <div className="form-section">
             <SectionTitle>Unit Size &amp; Rate</SectionTitle>
             <p className="text-xs text-gray-500 -mt-2 mb-4 leading-relaxed">
-              Choose the size you'd like to reserve. Our staff will assign the
-              specific unit when you arrive.
+              Choose the size you'd like to reserve. 
             </p>
 
             {sizesLoading && (
@@ -965,7 +964,7 @@ export default function IntakeForm() {
 
             {form.payment.method === "Cash" && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900 leading-relaxed">
-                <strong>Please note:</strong> To secure and hold your reservation, a credit card is required. If you continue without entering one, your information will be saved and our team will contact you to finalize payment in person.
+                <strong>Please note:</strong> To secure and hold your reservation, a credit card is required. If you continue without entering one, your information will be saved and our team will contact you to finalize payment.
               </div>
             )}
 
@@ -1214,7 +1213,7 @@ export default function IntakeForm() {
 
       {/* Footer */}
       <footer className="max-w-3xl mx-auto px-4 py-6 text-center text-xs text-gray-400">
-        Storage Plus Intake System &bull; All data transmitted securely &bull; No payment card data stored
+        Storage Plus Intake System &bull; All data transmitted securely
       </footer>
     </div>
   );
