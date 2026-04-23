@@ -224,18 +224,8 @@ function UnitSizeDropdown({ sizes, value, onSelect }) {
       >
         <div className="flex-1 min-w-0">
           {selected ? (
-            <div className="flex items-baseline justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-display font-semibold text-brand-navy text-base truncate">
-                  {selected.displaySize}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5 truncate">
-                  {selected.dimensions}
-                </div>
-              </div>
-              <div className="text-sm font-semibold text-brand-blue whitespace-nowrap">
-                ${Number(selected.monthly).toFixed(2)}/mo
-              </div>
+            <div className="font-display font-semibold text-brand-navy text-base truncate">
+              {selected.displaySize}
             </div>
           ) : (
             <span className="text-gray-400">Select a unit size</span>
@@ -272,21 +262,13 @@ function UnitSizeDropdown({ sizes, value, onSelect }) {
                   isSelected ? "bg-brand-navy/5" : "hover:bg-gray-50"
                 }`}
               >
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-display font-semibold text-brand-navy text-base flex items-center gap-2">
-                      <span>{s.displaySize}</span>
-                      {isSelected && (
-                        <svg className="w-4 h-4 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5">{s.dimensions}</div>
-                  </div>
-                  <div className="text-sm font-semibold text-brand-blue whitespace-nowrap">
-                    ${Number(s.monthly).toFixed(2)}/mo
-                  </div>
+                <div className="font-display font-semibold text-brand-navy text-base flex items-center gap-2">
+                  <span>{s.displaySize}</span>
+                  {isSelected && (
+                    <svg className="w-4 h-4 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                 </div>
               </button>
             );
@@ -614,12 +596,12 @@ export default function IntakeForm() {
           </Field>
         </div>
 
-        {/* ── UNIT SIZE & RATE ── */}
+        {/* ── UNIT SIZE ── */}
         {form.location && (
           <div className="form-section">
-            <SectionTitle>Unit Size &amp; Rate</SectionTitle>
+            <SectionTitle>Unit Size</SectionTitle>
             <p className="text-xs text-gray-500 -mt-2 mb-4 leading-relaxed">
-              Choose the size you'd like to reserve. 
+              Choose the size you'd like to reserve.
             </p>
 
             {sizesLoading && (
