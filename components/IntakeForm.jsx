@@ -147,12 +147,13 @@ function Field({ label, required, children, half }) {
   );
 }
 
-function Select({ value, onChange, options, placeholder, className = "" }) {
+function Select({ value, onChange, options, placeholder, className = "", notranslate = false }) {
   return (
     <select
       value={value}
       onChange={onChange}
       className={`input-base ${className}`}
+      translate={notranslate ? "no" : undefined}
     >
       {placeholder && <option value="">{placeholder}</option>}
       {options.map((o) => (
@@ -210,7 +211,7 @@ function UnitSizeDropdown({ sizes, value, onSelect }) {
   const selected = sizes.find((s) => s.unitId === value) || null;
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative" translate="no">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -592,6 +593,7 @@ export default function IntakeForm() {
               }}
               options={LOCATIONS}
               placeholder="— Select a location —"
+              notranslate
             />
           </Field>
         </div>
