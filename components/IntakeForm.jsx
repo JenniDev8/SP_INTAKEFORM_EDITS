@@ -147,11 +147,12 @@ function Field({ label, required, children, half }) {
   );
 }
 
-function Select({ value, onChange, options, placeholder, className = "", notranslate = false }) {
+function Select({ value, onChange, options, placeholder, className = "", notranslate = false, required = false }) {
   return (
     <select
       value={value}
       onChange={onChange}
+      required={required}
       className={`input-base ${className}`}
       translate={notranslate ? "no" : undefined}
     >
@@ -447,9 +448,19 @@ export default function IntakeForm() {
 
     // Required fields that aren't covered by native HTML validation
     const missing = [];
+    if (!form.customer.contractType) missing.push("Account Type");
     if (form.customer.contractType === "Business" && !form.customer.businessName.trim()) {
       missing.push("Business Name");
     }
+    if (!form.customer.firstName.trim()) missing.push("First Name");
+    if (!form.customer.lastName.trim()) missing.push("Last Name");
+    if (!form.customer.mailingAddress.address.trim()) missing.push("Street Address");
+    if (!form.customer.mailingAddress.city.trim()) missing.push("City");
+    if (!form.customer.mailingAddress.state) missing.push("State");
+    if (!form.customer.mailingAddress.zip.trim()) missing.push("ZIP Code");
+    if (!form.customer.phones[0]?.number?.trim()) missing.push("Phone Number");
+    if (!form.customer.emails[0]?.address?.trim()) missing.push("Email Address");
+    if (!form.startDate) missing.push("Rental Start Date");
     if (!form.marketing.howHeard) missing.push('"How did you hear about us?"');
     if (!form.unitSelection.unitId) missing.push("Unit Size");
     if (!form.payment.method) missing.push("Payment Method");
@@ -593,6 +604,7 @@ export default function IntakeForm() {
               }}
               options={LOCATIONS}
               placeholder="— Select a location —"
+              required
               notranslate
             />
           </Field>
@@ -653,6 +665,7 @@ export default function IntakeForm() {
                 onChange={(e) => set("customer.contractType", e.target.value)}
                 options={CONTRACT_TYPES}
                 placeholder="— Select type —"
+                required
               />
             </Field>
             {form.customer.contractType === "Business" && (
@@ -660,6 +673,8 @@ export default function IntakeForm() {
                 <input
                   className="input-base"
                   placeholder="e.g. Acme Corp"
+                  required
+                  translate="no"
                   value={form.customer.businessName}
                   onChange={(e) => set("customer.businessName", e.target.value)}
                 />
@@ -670,6 +685,9 @@ export default function IntakeForm() {
                 <input
                   className="input-base"
                   placeholder="First name"
+                  required
+                  autoComplete="given-name"
+                  translate="no"
                   value={form.customer.firstName}
                   onChange={(e) => set("customer.firstName", e.target.value)}
                 />
@@ -678,6 +696,9 @@ export default function IntakeForm() {
                 <input
                   className="input-base"
                   placeholder="Last name"
+                  required
+                  autoComplete="family-name"
+                  translate="no"
                   value={form.customer.lastName}
                   onChange={(e) => set("customer.lastName", e.target.value)}
                 />
@@ -695,6 +716,9 @@ export default function IntakeForm() {
                 <input
                   className="input-base"
                   placeholder="123 Main St"
+                  required
+                  autoComplete="street-address"
+                  translate="no"
                   value={form.customer.mailingAddress.address}
                   onChange={(e) => set("customer.mailingAddress.address", e.target.value)}
                 />
@@ -703,6 +727,8 @@ export default function IntakeForm() {
                 <input
                   className="input-base"
                   placeholder="Apt 2B"
+                  autoComplete="address-line2"
+                  translate="no"
                   value={form.customer.mailingAddress.aptSte}
                   onChange={(e) => set("customer.mailingAddress.aptSte", e.target.value)}
                 />
@@ -713,6 +739,9 @@ export default function IntakeForm() {
                 <input
                   className="input-base"
                   placeholder="City"
+                  required
+                  autoComplete="address-level2"
+                  translate="no"
                   value={form.customer.mailingAddress.city}
                   onChange={(e) => set("customer.mailingAddress.city", e.target.value)}
                 />
@@ -723,6 +752,8 @@ export default function IntakeForm() {
                   onChange={(e) => set("customer.mailingAddress.state", e.target.value)}
                   options={US_STATES}
                   placeholder="State"
+                  required
+                  notranslate
                 />
               </Field>
             </div>
@@ -731,7 +762,10 @@ export default function IntakeForm() {
                 <input
                   className="input-base"
                   placeholder="10001"
+                  inputMode="numeric"
                   maxLength={5}
+                  required
+                  autoComplete="postal-code"
                   value={form.customer.mailingAddress.zip}
                   onChange={(e) => set("customer.mailingAddress.zip", e.target.value)}
                 />
@@ -740,6 +774,7 @@ export default function IntakeForm() {
                 <input
                   className="input-base"
                   placeholder="1234"
+                  inputMode="numeric"
                   maxLength={4}
                   value={form.customer.mailingAddress.plusFour}
                   onChange={(e) => set("customer.mailingAddress.plusFour", e.target.value)}
@@ -773,7 +808,11 @@ export default function IntakeForm() {
                   <Field label="Phone Number" required half>
                     <input
                       className="input-base"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete={idx === 0 ? "tel" : "off"}
                       placeholder="(555) 000-0000"
+                      required={idx === 0}
                       value={phone.number}
                       onChange={(e) => updatePhone(idx, "number", e.target.value)}
                     />
@@ -781,6 +820,7 @@ export default function IntakeForm() {
                   <Field label="Ext (opt.)" half>
                     <input
                       className="input-base"
+                      inputMode="numeric"
                       placeholder="ext"
                       value={phone.ext}
                       onChange={(e) => updatePhone(idx, "ext", e.target.value)}
@@ -893,6 +933,7 @@ export default function IntakeForm() {
                 onChange={(e) => set("marketing.howHeard", e.target.value)}
                 options={HOW_HEARD_OPTIONS}
                 placeholder="— Select an option —"
+                required
               />
             </Field>
 
@@ -1001,7 +1042,9 @@ export default function IntakeForm() {
                           <input
                             className="input-base"
                             placeholder="123 Main St"
+                            required
                             autoComplete="billing street-address"
+                            translate="no"
                             value={form.billingAddress.address}
                             onChange={(e) => set("billingAddress.address", e.target.value)}
                           />
@@ -1010,6 +1053,8 @@ export default function IntakeForm() {
                           <input
                             className="input-base"
                             placeholder="Apt 2B"
+                            autoComplete="billing address-line2"
+                            translate="no"
                             value={form.billingAddress.aptSte}
                             onChange={(e) => set("billingAddress.aptSte", e.target.value)}
                           />
@@ -1020,7 +1065,9 @@ export default function IntakeForm() {
                           <input
                             className="input-base"
                             placeholder="City"
+                            required
                             autoComplete="billing address-level2"
+                            translate="no"
                             value={form.billingAddress.city}
                             onChange={(e) => set("billingAddress.city", e.target.value)}
                           />
@@ -1031,6 +1078,8 @@ export default function IntakeForm() {
                             onChange={(e) => set("billingAddress.state", e.target.value)}
                             options={US_STATES}
                             placeholder="State"
+                            required
+                            notranslate
                           />
                         </Field>
                       </div>
@@ -1039,7 +1088,9 @@ export default function IntakeForm() {
                           <input
                             className="input-base"
                             placeholder="10001"
+                            inputMode="numeric"
                             maxLength={5}
+                            required
                             autoComplete="billing postal-code"
                             value={form.billingAddress.zip}
                             onChange={(e) => set("billingAddress.zip", e.target.value)}
@@ -1064,6 +1115,7 @@ export default function IntakeForm() {
                         inputMode="numeric"
                         autoComplete="cc-number"
                         placeholder="1234 5678 9012 3456"
+                        required
                         value={form.creditCard.number}
                         onChange={(e) => set("creditCard.number", e.target.value)}
                       />
@@ -1076,6 +1128,7 @@ export default function IntakeForm() {
                           autoComplete="cc-exp"
                           placeholder="MM/YY"
                           maxLength={5}
+                          required
                           value={form.creditCard.expMmYy}
                           onChange={(e) => set("creditCard.expMmYy", e.target.value)}
                         />
@@ -1087,6 +1140,7 @@ export default function IntakeForm() {
                           autoComplete="cc-csc"
                           placeholder="123"
                           maxLength={4}
+                          required
                           value={form.creditCard.csc}
                           onChange={(e) => set("creditCard.csc", e.target.value)}
                         />
@@ -1109,6 +1163,7 @@ export default function IntakeForm() {
             <input
               className="input-base max-w-xs"
               type="date"
+              required
               value={form.startDate}
               onChange={(e) => set("startDate", e.target.value)}
             />
