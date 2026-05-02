@@ -769,9 +769,12 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
   sectionLabel(body, "Customer Signature");
   spacer(body, 8);
 
+  // Signature image sits directly above the X line so it visually rests
+  // on the printed signature line, like a real document.
   if (signatureBlob) {
     try {
       var sigP = body.appendParagraph("");
+      try { sigP.setSpacingBefore(0).setSpacingAfter(0); } catch(e) {}
       var sigImg = sigP.appendInlineImage(signatureBlob);
       var sigW = 280;
       sigImg.setWidth(sigW);
@@ -786,22 +789,23 @@ function generateIntakePdf(folder, data, nameSuffix, idFrontBlob, idBackBlob, si
     noSigP.editAsText().setFontSize(9).setItalic(true).setForegroundColor(TEXT_MUTED);
   }
 
-  var sigCaption = body.appendParagraph(
-    "Digitally signed by " + safe(data.firstName) + " " + safe(data.lastName) +
-    "  ·  " + formatNiceDate(data.timestamp)
-  );
-  try { sigCaption.setSpacingBefore(5); } catch(e) {}
-  sigCaption.editAsText().setFontSize(8).setForegroundColor(TEXT_MUTED);
-
-  spacer(body, 20);
-
-  // Printed signature line
+  // Printed signature line — pulled close so the drawn signature sits on it
   var sigLine = body.appendParagraph("X  _____________________________________________");
   sigLine.editAsText().setFontSize(11).setForegroundColor(TEXT_DARK);
+  try { sigLine.setSpacingBefore(0); } catch(e) {}
 
   var sigLabel = body.appendParagraph("Tenant Signature                                          Date: _______________");
   sigLabel.editAsText().setFontSize(8).setForegroundColor(TEXT_MUTED);
   try { sigLabel.setSpacingBefore(3); } catch(e) {}
+
+  // Digital-signature timestamp lives BELOW the printed line, acting as the
+  // notarization stamp for the whole signature block.
+  var sigCaption = body.appendParagraph(
+    "Digitally signed by " + safe(data.firstName) + " " + safe(data.lastName) +
+    "  ·  " + formatNiceDate(data.timestamp)
+  );
+  try { sigCaption.setSpacingBefore(10); } catch(e) {}
+  sigCaption.editAsText().setFontSize(8).setItalic(true).setForegroundColor(TEXT_MUTED);
 
   spacer(body, 24);
 
