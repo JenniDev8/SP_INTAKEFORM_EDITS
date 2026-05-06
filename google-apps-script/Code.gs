@@ -143,11 +143,112 @@ function formatWssStatus(status) {
   return "";
 }
 
+// ── TOKEN MANAGEMENT ──────────────────────────────────────────────────────────
+
+var TOKENS_TAB = "Tokens";
+var TOKEN_COLUMNS = ["Token", "Created At", "Label", "Used", "Used At"];
+
+// GET handler — only used for token validation (called server-side from Next.js)
+function doGet(e) {
+  var params = e.parameter || {};
+  if (params.action === "validateToken") {
+    return handleValidateToken(params.token);
+  }
+  return ContentService
+    .createTextOutput(JSON.stringify({ error: "Unknown action" }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleValidateToken(token) {
+  if (!token) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ valid: false, reason: "missing" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var sheet = getOrCreateTokenSheet();
+  var result = findTokenRow(sheet, token);
+  if (!result) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ valid: false, reason: "not_found" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var used = result.data[3];
+  if (used === true || String(used).toUpperCase() === "TRUE") {
+    return ContentService
+      .createTextOutput(JSON.stringify({ valid: false, reason: "used" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  return ContentService
+    .createTextOutput(JSON.stringify({ valid: true }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleCreateToken(label) {
+  var token = Utilities.getUuid();
+  var sheet = getOrCreateTokenSheet();
+  sheet.appendRow([token, new Date().toISOString(), label || "", false, ""]);
+  return ContentService
+    .createTextOutput(JSON.stringify({ token: token }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleUseToken(token) {
+  if (!token) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: "Missing token" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var sheet = getOrCreateTokenSheet();
+  var result = findTokenRow(sheet, token);
+  if (!result) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: "Token not found" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  sheet.getRange(result.rowIndex, 4).setValue(true);
+  sheet.getRange(result.rowIndex, 5).setValue(new Date().toISOString());
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getOrCreateTokenSheet() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(TOKENS_TAB);
+  if (!sheet) {
+    sheet = ss.insertSheet(TOKENS_TAB);
+    sheet.getRange(1, 1, 1, TOKEN_COLUMNS.length).setValues([TOKEN_COLUMNS]);
+    sheet.getRange(1, 1, 1, TOKEN_COLUMNS.length)
+      .setBackground("#0F2044")
+      .setFontColor("#FFFFFF")
+      .setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+// Returns { data: rowArray, rowIndex: 1basedInt } or null if not found
+function findTokenRow(sheet, token) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return null;
+  var data = sheet.getRange(2, 1, lastRow - 1, TOKEN_COLUMNS.length).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]) === String(token)) {
+      return { data: data[i], rowIndex: i + 2 };
+    }
+  }
+  return null;
+}
+
 // ── MAIN HANDLER ──────────────────────────────────────────────────────────────
 
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+
+    // Token management actions (called server-side from Next.js API routes)
+    if (data.action === "createToken") return handleCreateToken(data.label || "");
+    if (data.action === "useToken")    return handleUseToken(data.token || "");
 
     var tabName = getTabForLocation(data.location);
     var sheet = getOrCreateSheet(tabName);

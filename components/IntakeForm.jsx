@@ -5,6 +5,14 @@ import SignaturePad from "./SignaturePad";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { submitIntakeForm } from "@/lib/submitForm";
 import { fetchAvailableSizes } from "@/lib/wssClient";
+import {
+  cardDigitsOnly,
+  formatCardNumberGroups,
+  formatExpInput,
+  isValidCardNumber,
+  validateCvv,
+  validateExpiryMmYy,
+} from "@/lib/cardValidation";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -296,6 +304,8 @@ export default function IntakeForm() {
   const [availableSizes, setAvailableSizes] = useState([]);
   const [sizesLoading, setSizesLoading] = useState(false);
   const [sizesError, setSizesError] = useState(null);
+  /** false = masked while typing (password field); true = formatted number visible */
+  const [showCardNumber, setShowCardNumber] = useState(false);
 
   useEffect(() => {
     if (!form.location) {
@@ -469,7 +479,7 @@ export default function IntakeForm() {
     // Credit-card path: require card fields + billing address
     if (form.payment.method === "Credit Card") {
       const cc = form.creditCard;
-      if (!cc.number.trim()) missing.push("Credit Card Number");
+      if (!cardDigitsOnly(cc.number)) missing.push("Credit Card Number");
       if (!cc.expMmYy.trim()) missing.push("Card Expiration");
       if (!cc.csc.trim()) missing.push("Card CVV");
 
@@ -489,6 +499,26 @@ export default function IntakeForm() {
     if (missing.length > 0) {
       setError("Please complete the following before submitting: " + missing.join(", ") + ".");
       return;
+    }
+
+    if (form.payment.method === "Credit Card") {
+      const digits = cardDigitsOnly(form.creditCard.number);
+      if (!isValidCardNumber(digits)) {
+        setError(
+          "Please re-enter your card number carefully. It may be mistyped or incomplete (we check the number before sending it)."
+        );
+        return;
+      }
+      const expCheck = validateExpiryMmYy(form.creditCard.expMmYy);
+      if (!expCheck.ok) {
+        setError(expCheck.message);
+        return;
+      }
+      const cvvCheck = validateCvv(digits, form.creditCard.csc);
+      if (!cvvCheck.ok) {
+        setError(cvvCheck.message);
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -1110,27 +1140,74 @@ export default function IntakeForm() {
                   </p>
                   <div className="space-y-3">
                     <Field label="Card Number" required>
-                      <input
-                        className="input-base"
-                        inputMode="numeric"
-                        autoComplete="cc-number"
-                        placeholder="1234 5678 9012 3456"
-                        required
-                        value={form.creditCard.number}
-                        onChange={(e) => set("creditCard.number", e.target.value)}
-                      />
+                      <div className="relative">
+                        <input
+                          className="input-base pr-12 font-mono tabular-nums"
+                          inputMode="numeric"
+                          autoComplete="cc-number"
+                          placeholder="1234 5678 9012 3456"
+                          required
+                          type={showCardNumber ? "text" : "password"}
+                          maxLength={showCardNumber ? 24 : 19}
+                          value={
+                            showCardNumber
+                              ? formatCardNumberGroups(form.creditCard.number)
+                              : cardDigitsOnly(form.creditCard.number)
+                          }
+                          onChange={(e) =>
+                            set("creditCard.number", cardDigitsOnly(e.target.value))
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-gray-500 hover:text-brand-navy hover:bg-gray-100 transition"
+                          aria-label={showCardNumber ? "Hide card number" : "Show card number"}
+                          onClick={() => setShowCardNumber((v) => !v)}
+                        >
+                          {showCardNumber ? (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                              />
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1.5">
+                        Hidden while typing (dots). Use the eye icon to check what you entered.
+                      </p>
                     </Field>
                     <div className="flex gap-3 flex-wrap">
                       <Field label="Expiration (MM/YY)" required half>
                         <input
-                          className="input-base"
+                          className="input-base font-mono tabular-nums"
                           inputMode="numeric"
                           autoComplete="cc-exp"
                           placeholder="MM/YY"
                           maxLength={5}
                           required
                           value={form.creditCard.expMmYy}
-                          onChange={(e) => set("creditCard.expMmYy", e.target.value)}
+                          onChange={(e) =>
+                            set("creditCard.expMmYy", formatExpInput(e.target.value))
+                          }
                         />
                       </Field>
                       <Field label="CVV" required half>
