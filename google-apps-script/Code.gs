@@ -48,7 +48,7 @@ var LOCATION_TO_TAB = {
 var LOCATION_TO_EMAILS = {
   "long island city": ["storageplus@nystorage.com", "romc@nystorage.com"],
   "greenpoint":       ["greenpoint@nystorage.com", "romc@nystorage.com"],
-  "williamsburg":     ["jennifer@nystorage.com"],
+  "williamsburg":     ["nyc@nystorage.com", ],
   "jamaica":          ["liberty@nystorage.com",    "roman@nystorage.com"],
 };
 
@@ -80,6 +80,17 @@ function testEmail() {
   });
   Logger.log("✅ Test email sent to: " + recipients.join(", "));
   Logger.log("MailApp quota remaining today: " + MailApp.getRemainingDailyQuota());
+}
+
+// Sends a sample Sales-only email to sales@nystorage.com so you can preview
+// the minimal body and disclaimer formatting.
+function testSalesEmail() {
+  sendSalesIntakeNotification({
+    firstName: "Test",
+    lastName: "Customer",
+    location: "Greenpoint – 425 Greenpoint Ave, Brooklyn, NY 11222",
+  });
+  Logger.log("✅ Sent Sales preview email to sales@nystorage.com");
 }
 
 // Simulates the full location → recipients resolution for EVERY configured
@@ -362,9 +373,22 @@ function doPost(e) {
         pdfFileId: intakePdfFileId,
         idFrontBlob: idFrontBlob,
         idBackBlob: idBackBlob,
+        wssStatus: data.wssStatus,
+        wssError: data.wssError,
       });
     } catch (mailErr) {
       Logger.log("Notification email failed: " + mailErr.toString());
+    }
+
+    // Send a minimal notification to Sales only (no attachments, no sensitive fields)
+    try {
+      sendSalesIntakeNotification({
+        location: data.location,
+        firstName: data.firstName,
+        lastName: data.lastName,
+      });
+    } catch (salesMailErr) {
+      Logger.log("Sales notification email failed: " + salesMailErr.toString());
     }
 
     return ContentService
@@ -469,7 +493,11 @@ function sendIntakeNotification(info) {
 
   var name = trim(info.customerName) || "(name not provided)";
   var business = trim(info.businessName || "");
-  var subject = "New Intake Form Submitted – " + name;
+  var wssStatusHuman = formatWssStatus(info.wssStatus);
+  var wssError = trim(info.wssError || "");
+  var failed = String(info.wssStatus || "").toLowerCase() === "failed";
+  var subjectPrefix = failed ? "WSS Reservation Error – " : "";
+  var subject = subjectPrefix + "New Intake Form Submitted – " + name;
 
   // Collect attachments (IDs + PDF)
   var attachments = [];
@@ -491,6 +519,8 @@ function sendIntakeNotification(info) {
     "A new intake form has been submitted by: " + name,
   ];
   if (business) plainLines.push("Business: " + business);
+  if (wssStatusHuman) plainLines.push("WSS Reservation Status: " + wssStatusHuman);
+  if (failed && wssError) plainLines.push("WSS Failure Reason: " + wssError);
   plainLines.push("");
   plainLines.push("The ID photos and the intake PDF are attached to this email.");
   plainLines.push("");
@@ -513,7 +543,23 @@ function sendIntakeNotification(info) {
   var rowsHtml = "" +
     row("Customer", escapeHtml(name)) +
     (business ? row("Business", escapeHtml(business)) : "") +
+    (wssStatusHuman ? row("WSS Status", escapeHtml(wssStatusHuman)) : "") +
     row("Submitted", escapeHtml(formatNiceDate(new Date().toISOString())));
+
+  var wssAlertHtml = "";
+  if (failed) {
+    var wssLead =
+      "An error with the customer's information caused the reservation to not go through to WSS. " +
+      "However, the customer's intake information was collected successfully. Please review the intake form below.";
+    wssAlertHtml =
+      '<div style="border:1px solid ' + border + ';border-left:6px solid ' + accent + ';padding:12px 14px;border-radius:8px;background:#fff;margin:0 0 14px 0;">' +
+        '<div style="font-weight:bold;color:' + accent + ';margin-bottom:6px;">WSS reservation did not go through</div>' +
+        '<div style="color:#111;font-size:13px;line-height:1.35;">' +
+          '<div style="margin:0 0 8px 0;">' + escapeHtml(wssLead) + '</div>' +
+          '<div style="margin:0;color:#111;"><strong>Reason:</strong> ' + escapeHtml(wssError || "No error details were provided by WSS.") + '</div>' +
+        '</div>' +
+      '</div>';
+  }
 
   var attachmentsNote = "The <strong>ID photos</strong> and the <strong>intake PDF</strong> are attached to this email.";
 
@@ -521,11 +567,14 @@ function sendIntakeNotification(info) {
     '<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:600px;margin:0 auto;">' +
       '<div style="background:' + brand + ';color:#fff;padding:18px 20px;border-radius:8px 8px 0 0;">' +
         '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;opacity:.8;">Storage Plus</div>' +
-        '<div style="font-size:20px;font-weight:bold;margin-top:2px;">New Intake Form Submitted</div>' +
+        '<div style="font-size:20px;font-weight:bold;margin-top:2px;">' +
+          (failed ? 'WSS Reservation Error – Intake Submitted' : 'New Intake Form Submitted') +
+        '</div>' +
       '</div>' +
       '<div style="border:1px solid ' + border + ';border-top:none;padding:20px;border-radius:0 0 8px 8px;background:#fff;">' +
         '<p style="margin:0 0 12px 0;">Hello,</p>' +
         '<p style="margin:0 0 16px 0;">A new intake form has just been submitted.</p>' +
+        wssAlertHtml +
         '<table role="presentation" style="width:100%;border-collapse:collapse;background:' + softBg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:18px;">' +
           rowsHtml +
         '</table>' +
@@ -562,6 +611,51 @@ function sendIntakeNotification(info) {
 
   Logger.log("Notification sent to: " + recipients.join(", ") +
              " | attachments: " + attachments.length);
+}
+
+// Send a minimal, sales-only notification.
+// Requirements:
+// - ONLY sales@nystorage.com receives this email
+// - Include ONLY customer's first name, last name, and location
+// - Must clearly state this is NOT a U-Haul reservation; it's an intake submission
+function sendSalesIntakeNotification(info) {
+  info = info || {};
+  var to = "sales@nystorage.com";
+
+  var first = trim(info.firstName) || "(first name not provided)";
+  var last = trim(info.lastName) || "(last name not provided)";
+  var location = trim(info.location) || "(location not provided)";
+
+  var subject = "Intake Form Submission (Not a U-Haul Reservation) – " + first + " " + last;
+
+  var plain = [
+    "Intake form submission received.",
+    "",
+    "Customer: " + first + " " + last,
+    "Location: " + location,
+    "",
+    "IMPORTANT: This is NOT a U-Haul reservation. This is an Intake Form submission.",
+  ].join("\n");
+
+  var html =
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:600px;margin:0 auto;">' +
+      '<h2 style="margin:0 0 10px 0;font-size:18px;">Intake Form Submission</h2>' +
+      '<div style="padding:12px 14px;border:1px solid #E2E6EF;border-radius:8px;background:#F5F7FB;">' +
+        '<p style="margin:0 0 8px 0;"><strong>Customer:</strong> ' + escapeHtml(first + " " + last) + '</p>' +
+        '<p style="margin:0;"><strong>Location:</strong> ' + escapeHtml(location) + '</p>' +
+      '</div>' +
+      '<p style="margin:14px 0 0 0;color:#B22222;font-weight:bold;">IMPORTANT: This is NOT a U-Haul reservation. This is an Intake Form submission.</p>' +
+    '</div>';
+
+  MailApp.sendEmail({
+    to: to,
+    subject: subject,
+    body: plain,
+    htmlBody: html,
+    name: "Storage Plus Intake",
+  });
+
+  Logger.log("Sales notification sent to: " + to);
 }
 
 function escapeHtml(s) {
